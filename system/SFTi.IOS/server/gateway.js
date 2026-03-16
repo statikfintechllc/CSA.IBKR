@@ -40,6 +40,9 @@ const IBKR_SSO_URL = 'https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=
 // Default gateway base URL — the standard CP Gateway port
 const DEFAULT_GATEWAY_URL = 'https://localhost:5000';
 
+// Session duration — IBKR requires re-auth at least once per day
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
+
 export class GatewayManager {
   constructor({ onLog, onError, onStatusChange } = {}) {
     this._onLog = onLog || console.log;
@@ -255,7 +258,7 @@ export class GatewayManager {
       const data = await resp.json();
       // IBKR returns { authenticated: true, connected: true, ... } when valid
       if (data.authenticated) {
-        const expiry = Date.now() + 24 * 60 * 60 * 1000;
+      const expiry = Date.now() + SESSION_DURATION_MS;
         await this._vault.set(SESSION_KEY, { expiry });
         await this._notifySW('SET_SESSION', { expiry });
         this._setStatus('authenticated');

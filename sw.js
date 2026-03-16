@@ -17,6 +17,9 @@
 const SW_VERSION = '1.2.0';
 const CACHE_NAME = `csa-ibkr-v${SW_VERSION}`;
 
+// Session duration — IBKR requires re-auth at least once per day
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
+
 // Compute the app root from the SW's own scope — works for any deploy path.
 // e.g. https://user.github.io/CSA.IBKR/ or http://localhost:5500/
 const BASE = self.registration.scope; // guaranteed to end with '/'
@@ -99,7 +102,7 @@ self.addEventListener('message', (event) => {
   const { type, payload } = event.data || {};
   switch (type) {
     case 'SET_SESSION':
-      sessionExpiry = payload?.expiry || (Date.now() + 24 * 60 * 60 * 1000);
+      sessionExpiry = payload?.expiry || (Date.now() + SESSION_DURATION_MS);
       gatewayReady = true;
       broadcast({ type: 'SESSION_READY' });
       break;
@@ -219,7 +222,7 @@ async function handleOAuthCallback(request) {
   const token = url.searchParams.get('oauth_token') || url.searchParams.get('access_token');
 
   if (token) {
-    sessionExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 h
+    sessionExpiry = Date.now() + SESSION_DURATION_MS;
     gatewayReady = true;
     broadcast({ type: 'SESSION_READY', payload: { token, expiry: sessionExpiry } });
   }
