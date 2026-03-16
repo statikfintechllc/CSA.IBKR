@@ -1,0 +1,75 @@
+/**
+ * configs/fundamentals/css/fundamentals.css
+ */
+
+.fundamentals-panel {
+  padding: 14px 16px;
+  background: rgba(10, 10, 20, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+}
+
+.fund-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.fund-ticker {
+  font: 700 18px -apple-system, SF Pro Display;
+  color: #fff;
+  letter-spacing: 0.05em;
+}
+.fund-name {
+  font: 12px -apple-system, SF Pro Text;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fund-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.fund-last {
+  font: 700 26px -apple-system, SF Pro Display;
+  color: #fff;
+}
+.fund-change {
+  font: 13px -apple-system;
+}
+.fund-change.up { color: #26a69a; }
+.fund-change.down { color: #ef5350; }
+
+.fund-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.fund-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fk {
+  font: 10px -apple-system;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.fv {
+  font: 600 13px -apple-system, SF Pro Text;
+  color: rgba(255,255,255,0.85);
+}
+
+.fund-loading,
+.fund-error {
+  padding: 16px;
+  text-align: center;
+  font: 12px -apple-system;
+  color: rgba(255,255,255,0.35);
+}
+.fund-error { color: rgba(239,83,80,0.7); }

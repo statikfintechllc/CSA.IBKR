@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- iPhone-first: viewport-fit=cover lets us paint under the Dynamic Island / notch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <!-- iOS PWA controls -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CSA.IBKR" />
+  <!-- Theme colour matches deep-space background -->
+  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="description" content="SFTi IBKR Client Portal — self-contained in-browser trading terminal." />
+  <title>CSA.IBKR</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="system/configs/auth/css/auth.css" />
+  <link rel="stylesheet" href="system/configs/ticker.input/css/ticker.css" />
+  <link rel="stylesheet" href="system/configs/main.chart/css/chart.css" />
+  <link rel="stylesheet" href="system/configs/fundamentals/css/fundamentals.css" />
+  <link rel="stylesheet" href="system/configs/news/css/news.css" />
+  <style>
+    /* ── Reset ───────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Design tokens ───────────────────────────────────────────────────────── */
+    :root {
+      /* Colours */
+      --accent:       #00d4ff;
+      --accent-dim:   rgba(0, 212, 255, 0.18);
+      --accent-glow:  rgba(0, 212, 255, 0.35);
+      --bg:           #0a0a0f;
+      --bg-nav:       rgba(8, 8, 16, 0.97);
+      --bg-card:      rgba(14, 14, 26, 0.88);
+      --bg-input:     rgba(255, 255, 255, 0.05);
+      --border:       rgba(255, 255, 255, 0.07);
+      --border-hi:    rgba(0, 212, 255, 0.22);
+      --text:         #f0f0f2;
+      --text-dim:     rgba(255, 255, 255, 0.38);
+      --text-muted:   rgba(255, 255, 255, 0.22);
+      --green:        #26a69a;
+      --red:          #ef5350;
+      --amber:        #ffb700;
+
+      /* iOS safe areas — filled at runtime */
+      --sat: env(safe-area-inset-top, 0px);
+      --sar: env(safe-area-inset-right, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left, 0px);
+
+      /* Layout */
+      --nav-h:        52px;
+      --ticker-h:     52px;
+      --period-h:     36px;
+      --radius-card:  14px;
+      --radius-input: 11px;
+    }
+
+    /* ── Base ────────────────────────────────────────────────────────────────── */
+    html, body {
+      height: 100%; width: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      -webkit-tap-highlight-color: transparent;
+      /* Prevent iOS text-size adjustment on rotate */
+      -webkit-text-size-adjust: 100%;
+    }
+
+    /* ── Boot splash ─────────────────────────────────────────────────────────── */
+    #boot-splash {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+      background: radial-gradient(ellipse at 50% 38%,
+        rgba(0, 212, 255, 0.07) 0%, var(--bg) 65%);
+      padding: calc(var(--sat) + 20px) 24px calc(var(--sab) + 20px);
+      transition: opacity 0.45s ease;
+    }
+    #boot-splash.fade { opacity: 0; pointer-events: none; }
+    .splash-logo {
+      font: 800 32px -apple-system;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      text-shadow: 0 0 40px rgba(0, 212, 255, 0.4);
+    }
+    .splash-tagline {
+      font: 400 11px -apple-system;
+      color: var(--text-dim);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+    .splash-spinner {
+      width: 30px; height: 30px; margin-top: 8px;
+      border: 2px solid rgba(0, 212, 255, 0.12);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+    #splash-status {
+      font: 11px -apple-system;
+      color: rgba(0, 212, 255, 0.48);
+      letter-spacing: 0.04em;
+      min-height: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Auth screen ─────────────────────────────────────────────────────────── */
+    #auth-screen {
+      position: fixed; inset: 0; z-index: 900;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at 50% 30%,
+        rgba(0, 212, 255, 0.07) 0%, var(--bg) 68%);
+      padding: calc(var(--sat) + 16px) 20px calc(var(--sab) + 16px);
+    }
+    .auth-card {
+      width: 100%; max-width: 360px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-hi);
+      border-radius: 22px;
+      padding: 34px 26px 28px;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow: 0 28px 72px rgba(0, 0, 0, 0.65),
+                  0 0 0 1px rgba(0, 212, 255, 0.06) inset;
+    }
+
+    /* ── App shell ───────────────────────────────────────────────────────────── */
+    #app {
+      height: 100dvh;
+      display: flex; flex-direction: column;
+      padding-top: var(--sat);
+      padding-left: var(--sal);
+      padding-right: var(--sar);
+    }
+
+    /* ── Navigation bar ──────────────────────────────────────────────────────── */
+    .nav-bar {
+      display: flex; align-items: center;
+      height: var(--nav-h);
+      padding: 0 16px;
+      background: var(--bg-nav);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 10px;
+      /* Frosted-glass blur behind the nav */
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    .nav-logo {
+      font: 700 17px -apple-system;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      text-shadow: 0 0 20px var(--accent-glow);
+    }
+    .nav-divider { width: 1px; height: 18px; background: var(--border); }
+    .nav-status { flex: 1; display: flex; align-items: center; gap: 6px;
+      font: 11px -apple-system; color: var(--text-dim); overflow: hidden; }
+    .nav-dot {
+      flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%;
+      background: #333; transition: background 0.35s, box-shadow 0.35s;
+    }
+    .nav-status.ready .nav-dot {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+    #nav-status-text {
+      white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; max-width: 160px;
+    }
+    .nav-logout-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-dim);
+      font: 12px -apple-system;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .nav-logout-btn:active { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Scrollable main content ─────────────────────────────────────────────── */
+    .scroll-content {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      /* Extra breathing room at the bottom for iPhone home indicator */
+      padding-bottom: calc(var(--sab) + 16px);
+    }
+
+    /* ── Ticker input bar ────────────────────────────────────────────────────── */
+    .ticker-bar {
+      display: flex; align-items: center; gap: 10px;
+      height: var(--ticker-h);
+      padding: 0 12px;
+      background: rgba(12, 12, 22, 0.95);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* ── Period selector row ─────────────────────────────────────────────────── */
+    .period-row {
+      display: flex; align-items: center; gap: 4px;
+      height: var(--period-h);
+      padding: 0 12px;
+      background: rgba(10, 10, 18, 0.75);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      /* Hide scroll bar */
+      scrollbar-width: none;
+    }
+    .period-row::-webkit-scrollbar { display: none; }
+
+    /* ── Chart panel ─────────────────────────────────────────────────────────── */
+    #chart-section { position: relative; }
+    /* Full-bleed on mobile — no side borders */
+    .chart-panel {
+      border-radius: 0 !important;
+      border-left: none !important;
+      border-right: none !important;
+      border-top: none !important;
+    }
+    .chart-canvas-wrap canvas { cursor: crosshair; touch-action: none; }
+
+    /* ── Info grid (fundamentals + news side-by-side on tablets) ─────────────── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      padding: 10px 12px 0;
+    }
+    @media (min-width: 600px) {
+      .info-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── Section header shared style ─────────────────────────────────────────── */
+    .section-header {
+      padding: 10px 14px 8px;
+      font: 600 10px -apple-system;
+      color: var(--text-dim);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Card wrapper (orders, positions, log) ───────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+      margin: 10px 12px 0;
+    }
+
+    /* ── Quick order panel ───────────────────────────────────────────────────── */
+    .order-body {
+      padding: 12px 14px;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+    }
+    .order-field { display: flex; flex-direction: column; gap: 5px; }
+    .order-field label {
+      font: 10px -apple-system;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .order-field select,
+    .order-field input[type="number"] {
+      padding: 9px 10px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-input);
+      color: var(--text);
+      font: 13px -apple-system;
+      outline: none;
+      -webkit-appearance: none;
+      min-width: 78px;
+      transition: border-color 0.15s;
+    }
+    .order-field select:focus,
+    .order-field input[type="number"]:focus { border-color: var(--border-hi); }
+    .order-field select { min-width: 90px; }
+    .order-actions { display: flex; gap: 8px; align-items: flex-end; }
+    .btn-buy, .btn-sell {
+      padding: 10px 22px;
+      border: none; border-radius: var(--radius-input);
+      font: 600 13px -apple-system;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-buy  { background: var(--green); color: #fff; }
+    .btn-sell { background: var(--red);   color: #fff; }
+    .btn-buy:active, .btn-sell:active { opacity: 0.78; transform: scale(0.97); }
+
+    /* ── Positions strip ─────────────────────────────────────────────────────── */
+    .pos-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .pos-row:last-child { border-bottom: none; }
+    .pos-row:active { background: rgba(255, 255, 255, 0.03); }
+    .pos-symbol { font: 600 13px -apple-system; min-width: 52px; }
+    .pos-qty    { font: 12px -apple-system; color: var(--text-dim); min-width: 38px; }
+    .pos-price  { font: 12px -apple-system; color: var(--text-dim); flex: 1; }
+    .pos-pnl    { font: 600 12px -apple-system; }
+    .pos-pnl.up   { color: var(--green); }
+    .pos-pnl.down { color: var(--red); }
+    .pos-empty  { padding: 14px; text-align: center;
+      font: 12px -apple-system; color: var(--text-muted); }
+
+    /* ── Gateway log console ─────────────────────────────────────────────────── */
+    #log-console {
+      margin: 10px 12px;
+      padding: 9px 12px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(0, 212, 255, 0.07);
+      border-radius: 10px;
+      font: 10px "SF Mono", Menlo, "Courier New", monospace;
+      color: rgba(0, 212, 255, 0.5);
+      max-height: 72px;
+      overflow-y: auto;
+      line-height: 1.6;
+      scrollbar-width: none;
+    }
+    #log-console::-webkit-scrollbar { display: none; }
+
+    /* ── Order account label ─────────────────────────────────────────────────── */
+    .order-acct {
+      font: 400 10px -apple-system;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Utility ─────────────────────────────────────────────────────────────── */
+    .up   { color: var(--green) !important; }
+    .down { color: var(--red)   !important; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     BOOT SPLASH
+     Visible from first paint until auto-login resolves or auth screen shows.
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="boot-splash">
+  <div class="splash-logo">CSA.IBKR</div>
+  <div class="splash-tagline">SFTi · Client Portal</div>
+  <div class="splash-spinner"></div>
+  <div id="splash-status">Initialising…</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     AUTH SCREEN
+     Shown when no stored Face ID credential is found, or on first launch.
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="auth-screen" style="display:none;">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-text">CSA.IBKR</div>
+      <div class="auth-logo-sub">SFTi · Client Portal</div>
+    </div>
+
+    <div class="auth-field">
+      <label for="auth-username">IBKR Username</label>
+      <input type="text" id="auth-username"
+        autocomplete="username" autocapitalize="none" spellcheck="false"
+        placeholder="Username" enterkeyhint="next" />
+    </div>
+
+    <div class="auth-field">
+      <label for="auth-password">Password</label>
+      <input type="password" id="auth-password"
+        autocomplete="current-password"
+        placeholder="••••••••" enterkeyhint="go" />
+    </div>
+
+    <button id="auth-login-btn" class="auth-btn">Connect to IBKR</button>
+
+    <!-- Shown only when a WebAuthn credential is already stored -->
+    <button id="auth-faceid-btn" class="auth-faceid-btn" style="display:none;">
+      <!-- Face ID icon (SF Symbols equivalent in SVG) -->
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4
+                 M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4
+                 M9 12a3 3 0 0 1 6 0"/>
+      </svg>
+      Sign in with Face ID
+    </button>
+
+    <div id="auth-status" class="auth-status"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAIN APP SHELL
+     Hidden until authentication succeeds.
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="app" style="display:none;">
+
+  <!-- Top navigation bar -->
+  <nav class="nav-bar">
+    <span class="nav-logo">CSA.IBKR</span>
+    <div class="nav-divider"></div>
+    <span id="nav-status" class="nav-status">
+      <span class="nav-dot"></span>
+      <span id="nav-status-text">Starting…</span>
+    </span>
+    <button id="logout-btn" class="nav-logout-btn">Logout</button>
+  </nav>
+
+  <!-- All scrollable content lives inside .scroll-content -->
+  <div class="scroll-content">
+
+    <!-- ── Sticky ticker search bar ──────────────────────────────────────── -->
+    <div class="ticker-bar">
+      <div class="ticker-wrap">
+        <input id="ticker-input" class="ticker-input"
+          type="text" inputmode="text" enterkeyhint="search"
+          placeholder="Symbol — e.g. AAPL"
+          maxlength="10" spellcheck="false"
+          autocapitalize="characters" autocomplete="off" />
+        <!-- Suggestion dropdown injected here by ticker.js -->
+      </div>
+      <button id="ticker-go-btn" class="ticker-search-btn">Go</button>
+    </div>
+
+    <!-- ── Candlestick period selector ───────────────────────────────────── -->
+    <div class="period-row">
+      <button class="chart-period-btn" data-period="1m"  data-range="1d">1m</button>
+      <button class="chart-period-btn" data-period="5m"  data-range="5d">5m</button>
+      <button class="chart-period-btn" data-period="15m" data-range="1m">15m</button>
+      <button class="chart-period-btn" data-period="1h"  data-range="3m">1h</button>
+      <button class="chart-period-btn active" data-period="1d" data-range="1y">1D</button>
+      <button class="chart-period-btn" data-period="1w"  data-range="5y">1W</button>
+    </div>
+
+    <!-- ── Main chart (full-bleed, no side margins on mobile) ────────────── -->
+    <section id="chart-section">
+      <div class="chart-panel" id="chart-panel">
+        <div class="chart-canvas-wrap" id="chart-canvas-wrap">
+          <canvas id="main-chart"></canvas>
+          <div class="chart-loading" id="chart-loading">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Fundamentals + News (single column mobile, two columns ≥ 600px) ── -->
+    <div class="info-grid">
+      <div class="fundamentals-panel" id="fundamentals-panel">
+        <div class="fund-loading">Enter a symbol above.</div>
+      </div>
+      <div class="news-panel" id="news-panel">
+        <div class="news-loading">Enter a symbol above.</div>
+      </div>
+    </div>
+
+    <!-- ── Quick Order panel ─────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="section-header">
+        Quick Order
+        <span id="order-account-label" class="order-acct"></span>
+      </div>
+      <div class="order-body">
+        <div class="order-field">
+          <label for="order-type">Type</label>
+          <select id="order-type">
+            <option value="LMT">Limit</option>
+            <option value="MKT">Market</option>
+            <option value="STP">Stop</option>
+          </select>
+        </div>
+        <div class="order-field">
+          <label for="order-qty">Qty</label>
+          <input type="number" id="order-qty"
+            min="1" value="1" inputmode="numeric" placeholder="Qty" />
+        </div>
+        <div class="order-field" id="order-price-wrap">
+          <label for="order-price">Price</label>
+          <input type="number" id="order-price"
+            step="0.01" inputmode="decimal" placeholder="0.00" />
+        </div>
+        <div class="order-actions">
+          <button class="btn-buy"  id="order-buy-btn">Buy</button>
+          <button class="btn-sell" id="order-sell-btn">Sell</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Open Positions strip ──────────────────────────────────────────── -->
+    <div class="card">
+      <div class="section-header">Positions</div>
+      <div id="positions-list">
+        <div class="pos-empty">No open positions.</div>
+      </div>
+    </div>
+
+    <!-- ── Gateway / system log console ─────────────────────────────────── -->
+    <div id="log-console"></div>
+
+  </div><!-- /.scroll-content -->
+</div><!-- /#app -->
+
+<script type="module">
+import { AuthController }     from './system/configs/auth/js/auth.js';
+import { TickerInput }        from './system/configs/ticker.input/js/ticker.js';
+import { ChartDynamics }      from './system/configs/main.chart/js/dynamics.js';
+import { MainChartAlignment } from './system/configs/main.chart/js/alignment.js';
+import { FundamentalsPanel }  from './system/configs/fundamentals/js/fundamentals.js';
+import { NewsPanel }          from './system/configs/news/js/news.js';
+import { CandleChart }        from './system/SFTi.CRPs/CandleChart.js';
+import { Trades }             from './system/SFTi.IOS/trades/trades.js';
+import { Vault }              from './system/SFTi.IOS/storage/vault.js';
+
+/* ── Service Worker ─────────────────────────────────────────────────────── */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    .catch((e) => console.warn('[CSA.IBKR] SW registration failed:', e));
+}
+
+/* ── DOM shortcuts ──────────────────────────────────────────────────────── */
+const $ = (id) => document.getElementById(id);
+const splash       = $('boot-splash');
+const splashStatus = $('splash-status');
+const authScreen   = $('auth-screen');
+const appShell     = $('app');
+const logEl        = $('log-console');
+const navStatus    = $('nav-status');
+const navStatusTxt = $('nav-status-text');
+
+/* ── Logging ─────────────────────────────────────────────────────────────── */
+const log = (msg) => {
+  const line = document.createElement('div');
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (logEl.childElementCount > 60) logEl.firstChild.remove();
+};
+
+/* ── State ──────────────────────────────────────────────────────────────── */
+let chartInstance  = null;
+let chartDynamics  = null;
+let activeTicker   = null;
+let tradesInstance = null;
+const vault = new Vault('sfti.app');
+
+/* ── Auth controller ────────────────────────────────────────────────────── */
+const auth = new AuthController({
+  onAuthenticated:  ()        => onAuthenticated(),
+  onError:          (msg, err) => { log(String(err || msg)); setAuthStatus(String(err || msg), true); },
+  onStatusChange:   (msg)     => { log(msg); splashStatus.textContent = msg; navStatusTxt.textContent = msg; },
+});
+
+/* ── Boot sequence ──────────────────────────────────────────────────────── */
+async function boot() {
+  splashStatus.textContent = 'Checking credentials…';
+  /* Request persistent storage early — iOS 15.4+ honours this when installed */
+  Vault.requestPersistence().catch(() => {});
+
+  /* Short pause so the splash renders before heavy async work */
+  await new Promise((r) => setTimeout(r, 400));
+
+  /* Attempt Face ID auto-login */
+  let authed = false;
+  try { authed = await auth.tryAutoLogin(); } catch (_) {}
+  if (authed) return;
+
+  /* Show manual auth screen */
+  hideSplash();
+  authScreen.style.display = 'flex';
+
+  /* If a WebAuthn credential exists, reveal the Face ID button */
+  const { default: FaceID } = await import('./system/SFTi.IOS/face/faceid.js');
+  const faceID = new FaceID();
+  if (await faceID.hasCredential()) {
+    const faceBtn = $('auth-faceid-btn');
+    faceBtn.style.display = 'flex';
+    faceBtn.addEventListener('click', async () => {
+      setAuthStatus('Verifying Face ID…');
+      $('auth-login-btn').disabled = true;
+      try {
+        await auth.tryAutoLogin();
+      } catch (e) {
+        setAuthStatus(e.message, true);
+        $('auth-login-btn').disabled = false;
+      }
+    });
+  }
+}
+
+/* ── Auth helpers ───────────────────────────────────────────────────────── */
+function setAuthStatus(msg, isError = false) {
+  const el = $('auth-status');
+  el.textContent = msg;
+  el.className = 'auth-status' + (isError ? ' error' : '');
+}
+
+$('auth-login-btn').addEventListener('click', async () => {
+  const user = $('auth-username').value.trim();
+  const pass = $('auth-password').value;
+  if (!user || !pass) { setAuthStatus('Enter your IBKR username and password.', true); return; }
+  $('auth-login-btn').disabled = true;
+  setAuthStatus('Connecting…');
+  try {
+    await auth.manualLogin(user, pass);
+  } catch (e) {
+    setAuthStatus(e.message, true);
+    $('auth-login-btn').disabled = false;
+  }
+});
+
+/* Submit password field on Enter key */
+$('auth-password').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('auth-login-btn').click();
+});
+
+/* ── Post-auth app initialisation ───────────────────────────────────────── */
+async function onAuthenticated() {
+  authScreen.style.display = 'none';
+  hideSplash();
+  appShell.style.display = 'flex';
+  setNavReady(true);
+
+  /* Size chart to fill the viewport on this device */
+  const canvasWrap = $('chart-canvas-wrap');
+  MainChartAlignment.applyLayout(canvasWrap, window.innerHeight);
+
+  /* Re-apply layout on resize / orientation change */
+  window.addEventListener('resize', () => {
+    MainChartAlignment.applyLayout(canvasWrap, window.innerHeight);
+    if (chartInstance) chartInstance.render();
+  });
+
+  chartInstance = new CandleChart($('main-chart'));
+  chartDynamics = new ChartDynamics(chartInstance);
+
+  /* Ticker input widget */
+  new TickerInput($('ticker-input'), (ticker) => loadTicker(ticker));
+  $('ticker-go-btn').addEventListener('click', () => {
+    const t = $('ticker-input').value.trim().toUpperCase();
+    if (t) loadTicker(t);
+  });
+  $('ticker-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const t = e.target.value.trim().toUpperCase();
+      if (t) loadTicker(t);
+    }
+  });
+
+  /* Period buttons (cached NodeList to avoid re-querying on every click) */
+  const periodBtns = Array.from(document.querySelectorAll('.chart-period-btn'));
+  periodBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      periodBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (activeTicker) {
+        showChartLoading(true);
+        await chartDynamics.setPeriod(btn.dataset.period, btn.dataset.range);
+        showChartLoading(false);
+      }
+    });
+  });
+
+  /* Order panel */
+  $('order-buy-btn').addEventListener('click',  () => placeOrder('BUY'));
+  $('order-sell-btn').addEventListener('click', () => placeOrder('SELL'));
+  $('order-type').addEventListener('change', () => {
+    $('order-price-wrap').style.display = $('order-type').value === 'MKT' ? 'none' : '';
+  });
+
+  /* Logout */
+  $('logout-btn').addEventListener('click', async () => {
+    await auth.logout();
+    location.reload();
+  });
+
+  /* Load account + restore last ticker */
+  await loadAccount();
+  const lastTicker = await vault.get('last_ticker');
+  if (lastTicker) loadTicker(lastTicker);
+}
+
+/* ── Ticker loading ─────────────────────────────────────────────────────── */
+async function loadTicker(ticker) {
+  if (!ticker) return;
+  activeTicker = ticker;
+  await vault.set('last_ticker', ticker);
+  $('ticker-input').value = ticker;
+
+  const activeBtn = document.querySelector('.chart-period-btn.active');
+  const period = activeBtn?.dataset?.period || '1d';
+  const range  = activeBtn?.dataset?.range  || '1y';
+
+  showChartLoading(true);
+  if (chartDynamics) chartDynamics.destroy();
+  chartDynamics = new ChartDynamics(chartInstance);
+
+  await Promise.all([
+    chartDynamics.load(ticker, period, range).finally(() => showChartLoading(false)),
+    new FundamentalsPanel($('fundamentals-panel')).load(ticker),
+    new NewsPanel($('news-panel')).load(ticker),
+  ]);
+}
+
+/* ── Account / positions ────────────────────────────────────────────────── */
+async function loadAccount() {
+  try {
+    const resp = await fetch('/v1/api/portfolio/accounts', { credentials: 'include' });
+    if (!resp.ok) return;
+    const accounts = await resp.json();
+    const first = accounts?.[0];
+    if (first) {
+      const accountId = first.id || first.accountId;
+      $('order-account-label').textContent = accountId;
+      tradesInstance = new Trades({ accountId });
+      loadPositions();
+    }
+  } catch (_) {}
+}
+
+async function loadPositions() {
+  if (!tradesInstance) return;
+  try {
+    const positions = await tradesInstance.getPositions();
+    renderPositions(positions);
+  } catch (_) {}
+}
+
+function renderPositions(positions) {
+  const list = $('positions-list');
+  if (!positions?.length) {
+    list.innerHTML = '<div class="pos-empty">No open positions.</div>';
+    return;
+  }
+  list.innerHTML = positions.map((p) => {
+    const pnl = parseFloat(p.unrealizedPnl ?? p.unrealPnl ?? 0);
+    const sym  = p.ticker || p.contractDesc || '—';
+    const avgP = p.avgCost != null ? `@ $${parseFloat(p.avgCost).toFixed(2)}` : '';
+    /* NOTE: onclick uses window._lt to avoid inline script CSP issues */
+    return `<div class="pos-row" role="button" tabindex="0" onclick="window._lt('${sym}')">
+      <span class="pos-symbol">${sym}</span>
+      <span class="pos-qty">${p.position > 0 ? '+' : ''}${p.position}</span>
+      <span class="pos-price">${avgP}</span>
+      <span class="pos-pnl ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(2)}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ── Order placement ────────────────────────────────────────────────────── */
+async function placeOrder(side) {
+  if (!activeTicker || !tradesInstance) {
+    log('Select a ticker and ensure the gateway is connected.');
+    return;
+  }
+  try {
+    const result = await tradesInstance.placeOrder({
+      ticker:    activeTicker,
+      action:    side,
+      orderType: $('order-type').value,
+      quantity:  parseInt($('order-qty').value, 10) || 1,
+      lmtPrice:  parseFloat($('order-price').value) || undefined,
+    });
+    log(`✓ ${side} ${activeTicker} — orderId: ${result?.orderId ?? result?.order_id}`);
+  } catch (e) {
+    log(`✗ Order failed: ${e.message}`);
+  }
+}
+
+/* ── UI helpers ─────────────────────────────────────────────────────────── */
+function hideSplash() {
+  splash.classList.add('fade');
+  setTimeout(() => { splash.style.display = 'none'; }, 450);
+}
+
+function setNavReady(ready) {
+  navStatus.className = 'nav-status' + (ready ? ' ready' : '');
+  navStatusTxt.textContent = ready ? 'Gateway ready' : 'Disconnected';
+}
+
+function showChartLoading(visible) {
+  $('chart-loading').classList.toggle('visible', visible);
+}
+
+/* Expose for inline onclick in position rows */
+window._lt = loadTicker;
+
+/* ── Service Worker message bus ─────────────────────────────────────────── */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const type = e.data?.type;
+    if (type === 'SESSION_EXPIRED') {
+      setNavReady(false);
+      log('[SW] Session expired — please log in again.');
+    } else if (type === 'SESSION_READY') {
+      setNavReady(true);
+      log('[SW] Session established.');
+    }
+  });
+}
+
+/* ── Go ─────────────────────────────────────────────────────────────────── */
+boot();
+</script>
+</body>
+</html>
