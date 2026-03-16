@@ -20,8 +20,8 @@
   <link rel="stylesheet" href="system/configs/main.chart/css/chart.css" />
   <link rel="stylesheet" href="system/configs/fundamentals/css/fundamentals.css" />
   <link rel="stylesheet" href="system/configs/news/css/news.css" />
-  <!-- CheerpJ 3.0 — WebAssembly JVM (runs IBKR Java gateway in-browser) -->
-  <script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
+  <!-- CheerpJ 3.0 is loaded DYNAMICALLY by cheerpj.js when needed (not here)
+       to avoid blocking initial page render on mobile connections. -->
   <style>
     /* ── Reset ───────────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -413,7 +413,7 @@
         <span id="auth-gateway-label">Gateway</span>
       </div>
       <div id="auth-gateway-info" style="font:400 10px -apple-system;color:var(--text-dim,#667);margin-top:0.3rem;line-height:1.5;">
-        The gateway JVM boots automatically via CheerpJ.
+        Checking gateway connection…
       </div>
     </div>
 
@@ -583,20 +583,18 @@ const auth = new AuthController({
 
 /* ── Boot sequence ──────────────────────────────────────────────────────── */
 async function boot() {
-  splashStatus.textContent = 'Loading CheerpJ JVM…';
+  splashStatus.textContent = 'Connecting…';
   /* Request persistent storage early — iOS 15.4+ honours this when installed */
   Vault.requestPersistence().catch(() => {});
 
-  /* Short pause so the splash renders before heavy async work */
-  await new Promise((r) => setTimeout(r, 400));
+  /* Short pause so the splash renders before async work */
+  await new Promise((r) => setTimeout(r, 200));
 
-  /* Boot the gateway JVM automatically — user doesn't need to do anything */
+  /* Boot: fast ping first, CheerpJ in background if gateway not found */
   try {
-    splashStatus.textContent = 'Starting IBKR gateway…';
     await auth.gateway.boot();
   } catch (_) {
-    /* Gateway boot failure is non-fatal — user can still reach an external gw */
-    log('[Boot] Gateway JVM boot failed — will try external gateway.');
+    log('[Boot] Gateway boot error.');
   }
 
   /* Attempt Face ID auto-login */
@@ -614,7 +612,7 @@ async function boot() {
     gwStatus.status === 'ready' || gwStatus.status === 'authenticated' ? 'ok'
     : gwStatus.status === 'booting' ? 'booting'
     : gwStatus.status === 'error' ? 'fail'
-    : ''
+    : 'waiting'
   );
 
   /* If a WebAuthn credential exists, reveal the Face ID button */
@@ -647,16 +645,18 @@ function setGatewayDot(state) {
   const dot = $('auth-gateway-dot');
   const label = $('auth-gateway-label');
   const info = $('auth-gateway-info');
-  dot.className = 'auth-gateway-dot' + (state === 'ok' ? ' ok' : state === 'fail' ? ' fail' : '');
-  label.textContent = state === 'ok' ? 'Gateway ready'
+  dot.className = 'auth-gateway-dot' + (state === 'ok' ? ' ok' : state === 'fail' || state === 'waiting' ? ' fail' : '');
+  label.textContent = state === 'ok' ? 'Gateway connected'
     : state === 'fail' ? 'Gateway unavailable'
-    : state === 'booting' ? 'Booting JVM…'
+    : state === 'booting' ? 'Starting JVM…'
+    : state === 'waiting' ? 'Waiting for gateway'
     : 'Gateway';
   if (info) {
     info.textContent = state === 'ok' ? 'Connected — ready to sign in.'
-      : state === 'fail' ? 'CheerpJ could not start the gateway. Check the log console.'
-      : state === 'booting' ? 'Starting IBKR Client Portal Gateway via CheerpJ…'
-      : 'The gateway JVM boots automatically via CheerpJ.';
+      : state === 'fail' ? 'Could not reach gateway. Ensure it is running.'
+      : state === 'booting' ? 'Loading CheerpJ runtime…'
+      : state === 'waiting' ? 'Run the IBKR Client Portal Gateway, then sign in.'
+      : 'Checking gateway…';
   }
 }
 
@@ -666,12 +666,17 @@ $('auth-login-btn').addEventListener('click', async () => {
   if (!user || !pass) { setAuthStatus('Enter your IBKR username and password.', true); return; }
 
   $('auth-login-btn').disabled = true;
-  setAuthStatus('Signing in…');
+  setAuthStatus('Connecting to gateway…');
+
+  /* Re-check gateway on every sign-in attempt (it may have started since boot) */
+  const reachable = await auth.gateway.checkConnection();
+  if (reachable) setGatewayDot('ok');
+
   try {
     await auth.manualLogin(user, pass);
   } catch (e) {
     setAuthStatus(e.message, true);
-    setGatewayDot('fail');
+    setGatewayDot(reachable ? 'fail' : 'waiting');
     $('auth-login-btn').disabled = false;
   }
 });

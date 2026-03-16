@@ -3,19 +3,20 @@
  *
  * Manages the full lifecycle of the IBKR Client Portal Gateway:
  *
- *   boot()                   → start the in-browser JVM via CheerpJ 3.0,
- *                              then verify the gateway is reachable
- *   authenticate()           → open the gateway's login page (IBKR SSO),
- *                              poll for session
+ *   boot()                   → check for running gateway, then try CheerpJ
+ *   authenticate()           → open gateway login page (IBKR SSO), poll for session
  *   loginWithCredentials()   → authenticate, then init brokerage session
- *   tickle()                 → keep the session alive (POST /tickle every 55s)
+ *   tickle()                 → keep session alive (POST /tickle every 55s)
  *   logout()                 → clear session + stop JVM
  *   getStatus()              → current gateway + auth state
+ *   checkConnection()        → public reachability test
  *
- * CheerpJ 3.0 (loaded from CDN in index.html) provides the WebAssembly
- * JVM that runs the IBKR gateway JAR entirely in the browser.  The JVM
- * boots automatically — the user only needs to add the PWA to their
- * home screen and sign in.
+ * Boot strategy (fast first, slow fallback):
+ *   1. Immediately ping the configured gateway URL (default localhost:5000)
+ *   2. If reachable → ready (fast path, ~1-2 seconds)
+ *   3. If not → attempt CheerpJ JVM boot in background (slow, may not work)
+ *   4. CheerpJ has a known limitation: browsers cannot create TCP server
+ *      sockets, so Vert.x/Netty will fail to bind.  Kept for forward compat.
  */
 
 import { getGateway } from '../../cheerpJ.local/cheerpj.js';
@@ -26,7 +27,7 @@ const GATEWAY_URL_KEY = 'gw_base_url';
 const TICKLE_INTERVAL_MS = 55_000;
 const SSO_POLL_INTERVAL_MS = 2000;
 const SSO_TIMEOUT_MS = 300_000; // 5 minutes
-const PING_TIMEOUT_MS = 6000;
+const PING_TIMEOUT_MS = 4000;
 
 const DEFAULT_GATEWAY_URL = 'https://localhost:5000';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
@@ -46,49 +47,41 @@ export class GatewayManager {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Boot the in-browser JVM gateway via CheerpJ 3.0, then verify reachability.
+   * Boot sequence — fast path first, CheerpJ fallback in background.
    *
-   * The user does not need to do anything — CheerpJ loads from CDN,
-   * initialises the WebAssembly JVM, and launches the gateway JAR
-   * automatically.  JARs are served by GitHub Pages (Jekyll) and
-   * cached in the client-side vault (OPFS) for offline support.
+   * 1. Restore saved gateway URL
+   * 2. Immediately ping the gateway (fast — just an HTTP request)
+   * 3. If reachable → set status 'ready' and return
+   * 4. If not → set status 'awaiting_gateway', fire off CheerpJ in background
+   *
+   * This ensures the app is interactive within seconds, not minutes.
    */
   async boot() {
     if (this._status !== 'idle') return;
     this._setStatus('booting');
 
-    // Restore persisted gateway URL (if user previously set one)
+    // Restore persisted gateway URL
     const savedUrl = await this._vault.get(GATEWAY_URL_KEY);
     if (savedUrl) this._gatewayBaseUrl = savedUrl;
 
-    // Boot the CheerpJ JVM — this prefetches all JARs into OPFS,
-    // then calls cheerpjInit() + cheerpjRunMain() to start the gateway.
-    try {
-      this._gateway = getGateway({
-        onLog: (msg) => this._onLog(msg),
-        onError: (msg) => this._onError(msg),
-        onReady: () => {
-          this._onLog('[Gateway] CheerpJ JVM started gateway successfully.');
-        },
-      });
-
-      await this._gateway.boot();
-    } catch (err) {
-      this._onLog('[Gateway] CheerpJ boot error: ' + (err.message || err));
-    }
-
-    // Notify SW of the gateway URL for API proxying
+    // Notify SW of gateway URL for API proxying
     await this._notifySW('SET_GATEWAY_URL', { url: this._gatewayBaseUrl });
 
-    // Check if the gateway is actually reachable (may be CheerpJ or external)
+    // Fast path: check for an already-running gateway
+    this._onLog('[Gateway] Connecting to ' + this._gatewayBaseUrl + '…');
     const reachable = await this._pingGateway();
     if (reachable) {
       this._setStatus('ready');
-      this._onLog('[Gateway] Gateway reachable at ' + this._gatewayBaseUrl);
-    } else {
-      this._setStatus('awaiting_gateway');
-      this._onLog('[Gateway] Gateway JVM active but HTTP endpoint not reachable from browser.');
+      this._onLog('[Gateway] Connected.');
+      return;
     }
+
+    // Gateway not found — set status immediately so UI is responsive
+    this._setStatus('awaiting_gateway');
+    this._onLog('[Gateway] Gateway not reachable — attempting CheerpJ JVM boot…');
+
+    // Non-blocking: try CheerpJ in background (may fail due to browser limitations)
+    this._tryCheerpJBackground();
   }
 
   /**
@@ -105,14 +98,19 @@ export class GatewayManager {
   async authenticate() {
     if (this._status === 'idle') await this.boot();
 
-    // Pre-flight: try to reach the gateway before opening a popup
+    // Pre-flight: fresh ping to gateway (it may have come up since boot)
     const reachable = await this._pingGateway();
     if (!reachable) {
       throw new Error(
-        'Gateway not reachable. The CheerpJ JVM started the gateway, but ' +
-        'the HTTP endpoint is not accessible from the browser. ' +
-        'Ensure the self-signed certificate is accepted at ' + this._gatewayBaseUrl
+        'Gateway not reachable at ' + this._gatewayBaseUrl + '. ' +
+        'Ensure the Client Portal Gateway is running and the self-signed ' +
+        'certificate is accepted in your browser.'
       );
+    }
+
+    // Gateway found — update status if we were still awaiting
+    if (this._status === 'awaiting_gateway') {
+      this._setStatus('ready');
     }
 
     this._onLog('[Gateway] Opening IBKR SSO login…');
@@ -236,6 +234,38 @@ export class GatewayManager {
   }
 
   // ─── Private ────────────────────────────────────────────────────────────────
+
+  /**
+   * Try to start the gateway via CheerpJ in the background.
+   * This is fire-and-forget — it does not block the boot flow.
+   * CheerpJ 3.0 cannot create TCP server sockets, so this will likely fail,
+   * but we attempt it for forward compatibility.
+   */
+  async _tryCheerpJBackground() {
+    try {
+      this._gateway = getGateway({
+        onLog: (msg) => this._onLog(msg),
+        onError: () => {},
+        onReady: async () => {
+          const up = await this._pingGateway();
+          if (up && this._status === 'awaiting_gateway') {
+            this._setStatus('ready');
+            this._onLog('[Gateway] CheerpJ gateway is now reachable.');
+          }
+        },
+      });
+      await this._gateway.boot();
+    } catch (err) {
+      this._onLog('[Gateway] CheerpJ could not start the gateway: ' + (err.message || err));
+    }
+
+    // Final check after CheerpJ attempt
+    const up = await this._pingGateway();
+    if (up && this._status === 'awaiting_gateway') {
+      this._setStatus('ready');
+      this._onLog('[Gateway] Gateway is now reachable.');
+    }
+  }
 
   async _pingGateway() {
     const controller = new AbortController();

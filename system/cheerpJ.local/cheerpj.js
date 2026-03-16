@@ -1,20 +1,20 @@
 /**
  * cheerpj.js — CheerpJ Integration Layer
  *
- * Uses the real CheerpJ 3.0 runtime (from Leaning Technologies CDN) to run
- * the IBKR Client Portal Gateway's Java code in-browser via WebAssembly JIT.
+ * Uses the real CheerpJ 3.0 runtime (from Leaning Technologies CDN) to attempt
+ * running the IBKR Client Portal Gateway's Java code in-browser via WebAssembly.
+ *
+ * KNOWN LIMITATION (browser sandbox):
+ *   CheerpJ 3.0 does NOT support Java ServerSocket / Netty server bindings.
+ *   The IBKR gateway (Vert.x / Netty) requires a TCP listener on port 5000,
+ *   which browsers cannot create.  The JVM will start but the HTTP server
+ *   will fail to bind.  This module is kept for forward-compatibility.
  *
  * Architecture:
- *   1. CheerpJ 3.0 loaded via <script> in index.html from CDN
+ *   1. CheerpJ 3.0 loaded DYNAMICALLY (not in <head>) to avoid blocking page load
  *   2. cheerpjInit() boots the WebAssembly JVM environment
  *   3. cheerpjRunMain() launches the gateway's main class with full classpath
- *   4. Java networking (Vert.x / Netty HTTP) → browser fetch (CheerpJ bridge)
- *   5. All JARs served by GitHub Pages (Jekyll includes them in the site)
- *   6. JARs also pre-cached in OPFS vault for offline / instant subsequent boots
- *
- * The /app/ prefix in CheerpJ's virtual filesystem maps to the page's
- * document root, so /app/system/IBKR.CSA/... resolves to the GitHub
- * Pages–hosted files.
+ *   4. JARs served by GitHub Pages, pre-cached in OPFS vault for offline use
  */
 
 import { Vault } from '../SFTi.IOS/storage/vault.js';
@@ -24,8 +24,8 @@ const GW_ROOT      = 'system/IBKR.CSA/clientportal.gw';
 const GATEWAY_JAR  = `${GW_ROOT}/dist/ibgroup.web.core.iblink.router.clientportal.gw.jar`;
 const CONF_YAML    = `${GW_ROOT}/root/conf.yaml`;
 
-// Main class — matches bin/run.sh in the official IBKR distribution
-const MAIN_CLASS = 'ibgroup.web.core.clientportal.gw.GatewayStart';
+const MAIN_CLASS   = 'ibgroup.web.core.clientportal.gw.GatewayStart';
+const CHEERPJ_CDN  = 'https://cjrtnc.leaningtech.com/3.0/cj3loader.js';
 
 // All runtime JARs (exact filenames from build/lib/runtime/)
 const RUNTIME_JARS = [
@@ -78,15 +78,31 @@ export class CheerpJLocal {
     this.onReady = opts.onReady || (() => {});
     this.onError = opts.onError || console.error;
     this.onLog   = opts.onLog   || console.log;
-    this._state  = 'idle'; // idle | prefetching | booting | running | stopped | error
+    this._state  = 'idle'; // idle | loading | prefetching | booting | running | stopped | error
     this._jvmPromise = null;
   }
 
   /**
-   * Prefetch all gateway assets from the repo into the OPFS vault.
-   * CheerpJ fetches JARs itself via HTTP, but pre-caching in OPFS lets
-   * the Service Worker serve them from cache for offline / instant boots.
-   *
+   * Dynamically load the CheerpJ 3.0 runtime from CDN.
+   * Avoids blocking the initial page render with a synchronous <script>.
+   */
+  async _loadScript() {
+    if (typeof globalThis.cheerpjInit === 'function') return;
+
+    this._state = 'loading';
+    this.onLog('[CheerpJ] Loading runtime from CDN…');
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = CHEERPJ_CDN;
+      script.onload = () => { this.onLog('[CheerpJ] Runtime loaded.'); resolve(); };
+      script.onerror = () => reject(new Error('Failed to load CheerpJ 3.0 from CDN — check network.'));
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Prefetch gateway JARs into the OPFS vault for offline/fast boots.
    * @returns {Promise<{cached: number, fetched: number, failed: string[]}>}
    */
   async prefetchAssets() {
@@ -100,14 +116,12 @@ export class CheerpJLocal {
     for (const path of allPaths) {
       const key = vaultKey(path);
       try { if (await Vault.hasFile(key)) { cached++; continue; } } catch (_) {}
-
       try {
         const bytes = await Vault.fetchAndCache(path, key);
         if (bytes) { fetched++; } else { failed.push(path.split('/').pop()); }
       } catch (_) { failed.push(path.split('/').pop()); }
     }
 
-    // Also cache the gateway config
     try {
       const confKey = vaultKey(CONF_YAML);
       if (!(await Vault.hasFile(confKey))) {
@@ -125,68 +139,46 @@ export class CheerpJLocal {
   /**
    * Boot the JVM and launch the IBKR Client Portal Gateway.
    *
-   * Uses CheerpJ 3.0 (loaded from CDN via <script>) to:
-   *   1. Initialize the WebAssembly JVM environment
-   *   2. Build the full classpath (root dir + main JAR + runtime JARs)
-   *   3. Launch the gateway's GatewayStart main class
-   *
-   * The /app/ prefix maps to the page's document root — CheerpJ fetches
-   * JARs from the web server (GitHub Pages) automatically.
+   * NOTE: CheerpJ 3.0 does not support ServerSocket, so the Vert.x/Netty
+   * gateway will likely fail to bind to port 5000.  This is a best-effort
+   * attempt kept for forward compatibility.
    */
   async boot() {
-    if (this._state !== 'idle' && this._state !== 'prefetching') return;
+    if (this._state !== 'idle' && this._state !== 'prefetching' && this._state !== 'loading') return;
 
-    // Pre-cache JARs in vault (non-blocking optimisation)
+    try { await this._loadScript(); } catch (err) {
+      this._state = 'error'; this.onError(err); throw err;
+    }
+
     try { await this.prefetchAssets(); } catch (_) { /* non-fatal */ }
 
     this._state = 'booting';
-
-    // CheerpJ 3.0 must be loaded via the CDN <script> tag in index.html.
-    if (typeof cheerpjInit !== 'function') {
-      this._state = 'error';
-      const msg = 'CheerpJ 3.0 runtime not loaded — check network connectivity.';
-      this.onLog('[CheerpJ] ' + msg);
-      this.onError(new Error(msg));
-      throw new Error(msg);
-    }
 
     try {
       this.onLog('[CheerpJ] Initializing WebAssembly JVM…');
       await cheerpjInit({ status: 'none' });
 
-      // Build classpath using /app/ prefix (CheerpJ virtual filesystem).
-      // Compute base path from the page URL so it works from any subdirectory
-      // (e.g. /CSA.IBKR/ on GitHub Pages, or / on a custom domain).
       const basePath = new URL('./', document.baseURI).pathname;
       const appBase  = '/app' + basePath;
-
-      // Classpath mirrors bin/run.sh:  root dir : main JAR : runtime/*
       const rootDir  = appBase + GW_ROOT + '/root';
       const mainJar  = appBase + GATEWAY_JAR;
       const rtJars   = RUNTIME_JARS.map(j => appBase + j);
       const classpath = [rootDir, mainJar, ...rtJars].join(':');
-
       const confArg = appBase + CONF_YAML;
 
-      this.onLog('[CheerpJ] Starting IBKR Client Portal Gateway…');
+      this.onLog('[CheerpJ] Starting gateway (server socket may fail in browser)…');
 
-      // cheerpjRunMain() resolves when main() returns.
-      // For Vert.x: main() starts the event loop and may block indefinitely
-      // (server running), return immediately (event loop on worker thread),
-      // or throw (e.g. unsupported native op).  We race against a timeout.
       this._jvmPromise = cheerpjRunMain(
-        MAIN_CLASS, classpath,
-        '--conf', confArg
+        MAIN_CLASS, classpath, '--conf', confArg
       );
 
       const result = await Promise.race([
         this._jvmPromise.then(() => 'exited'),
-        this._sleep(20000).then(() => 'timeout'),
+        this._sleep(15000).then(() => 'timeout'),
       ]);
 
-      // Either way, the JVM is active.
       this._state = 'running';
-      this.onLog('[CheerpJ] Gateway JVM active (' + result + ').');
+      this.onLog('[CheerpJ] JVM active (' + result + ').');
       this.onReady();
     } catch (err) {
       this._state = 'error';
@@ -196,14 +188,12 @@ export class CheerpJLocal {
     }
   }
 
-  /** Gracefully stop the JVM. */
   async stop() {
     this._state = 'stopped';
     this.onLog('[CheerpJ] Stopped.');
   }
 
   get state() { return this._state; }
-
   _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 }
 
