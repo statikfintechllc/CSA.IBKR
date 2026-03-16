@@ -83,7 +83,7 @@ export class AuthController {
     const ok = await this._gateway.loginWithCredentials(username, password);
     if (!ok) {
       throw new Error(
-        'Login was not completed. Ensure the gateway is running, accept the SSL certificate, then try again.'
+        'Login was not completed. Accept the SSL certificate at the gateway URL, then try again.'
       );
     }
   }

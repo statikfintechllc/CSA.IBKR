@@ -3,31 +3,19 @@
  *
  * Manages the full lifecycle of the IBKR Client Portal Gateway:
  *
- *   boot()                   → start the in-browser JVM + gateway JAR,
- *                              or verify an external gateway is reachable
- *   authenticate()           → open the gateway's own login page (which
- *                              redirects to IBKR SSO), then poll for session
- *   loginWithCredentials()   → store creds via Face ID, then authenticate
+ *   boot()                   → start the in-browser JVM via CheerpJ 3.0,
+ *                              then verify the gateway is reachable
+ *   authenticate()           → open the gateway's login page (IBKR SSO),
+ *                              poll for session
+ *   loginWithCredentials()   → authenticate, then init brokerage session
  *   tickle()                 → keep the session alive (POST /tickle every 55s)
- *   logout()                 → clear session + stop gateway
+ *   logout()                 → clear session + stop JVM
  *   getStatus()              → current gateway + auth state
  *
- * Authentication flow (per GettingStarted.md):
- *   1. Open the Client Portal Gateway's own URL in a popup
- *      (e.g. https://localhost:5000)
- *   2. The gateway redirects to IBKR SSO for login + 2FA
- *   3. After login, IBKR SSO redirects BACK to the gateway
- *   4. The gateway captures the session token
- *   5. Poll /iserver/auth/status to confirm the session
- *   6. /iserver/auth/ssodh/init opens the brokerage session
- *
- * Opening the gateway URL (not the IBKR SSO URL directly) is critical:
- * the gateway must be the redirect target so it can capture the session
- * cookie.  Navigating to IBKR SSO directly would log you into the web
- * portal without establishing a session on the local gateway.
- *
- * The Service Worker proxies all /v1/api/* requests to the configured
- * gateway base URL.
+ * CheerpJ 3.0 (loaded from CDN in index.html) provides the WebAssembly
+ * JVM that runs the IBKR gateway JAR entirely in the browser.  The JVM
+ * boots automatically — the user only needs to add the PWA to their
+ * home screen and sign in.
  */
 
 import { getGateway } from '../../cheerpJ.local/cheerpj.js';
@@ -38,12 +26,9 @@ const GATEWAY_URL_KEY = 'gw_base_url';
 const TICKLE_INTERVAL_MS = 55_000;
 const SSO_POLL_INTERVAL_MS = 2000;
 const SSO_TIMEOUT_MS = 300_000; // 5 minutes
-const PING_TIMEOUT_MS = 6000;   // gateway reachability check
+const PING_TIMEOUT_MS = 6000;
 
-// Default gateway base URL — the standard CP Gateway port
 const DEFAULT_GATEWAY_URL = 'https://localhost:5000';
-
-// Session duration — IBKR requires re-auth at least once per day
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
 
 export class GatewayManager {
@@ -61,104 +46,76 @@ export class GatewayManager {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Set the gateway base URL.  Persists in the vault so it survives reloads.
-   * Also notifies the Service Worker so it can proxy requests correctly.
+   * Boot the in-browser JVM gateway via CheerpJ 3.0, then verify reachability.
    *
-   * @param {string} url  e.g. "https://localhost:5000" or "https://192.168.1.5:5000"
+   * The user does not need to do anything — CheerpJ loads from CDN,
+   * initialises the WebAssembly JVM, and launches the gateway JAR
+   * automatically.  JARs are served by GitHub Pages (Jekyll) and
+   * cached in the client-side vault (OPFS) for offline support.
    */
-  async setGatewayUrl(url) {
-    this._gatewayBaseUrl = url.replace(/\/+$/, '');
-    await this._vault.set(GATEWAY_URL_KEY, this._gatewayBaseUrl);
-    await this._notifySW('SET_GATEWAY_URL', { url: this._gatewayBaseUrl });
-    this._onLog(`[Gateway] Base URL set to ${this._gatewayBaseUrl}`);
-  }
-
-  /** Start the in-browser JVM gateway (CheerpJ), then verify reachability. */
   async boot() {
     if (this._status !== 'idle') return;
     this._setStatus('booting');
 
-    // Restore persisted gateway URL
+    // Restore persisted gateway URL (if user previously set one)
     const savedUrl = await this._vault.get(GATEWAY_URL_KEY);
     if (savedUrl) this._gatewayBaseUrl = savedUrl;
 
+    // Boot the CheerpJ JVM — this prefetches all JARs into OPFS,
+    // then calls cheerpjInit() + cheerpjRunMain() to start the gateway.
     try {
       this._gateway = getGateway({
         onLog: (msg) => this._onLog(msg),
         onError: (msg) => this._onError(msg),
         onReady: () => {
-          this._onLog('[Gateway] In-browser gateway ready.');
+          this._onLog('[Gateway] CheerpJ JVM started gateway successfully.');
         },
       });
 
-      // boot() now prefetches all JARs/WASM from the repo into the
-      // client-side vault (OPFS), then attempts to start the JVM.
       await this._gateway.boot();
     } catch (err) {
-      // CheerpJ / WASM boot failed — expected until the real WASM JVM ships.
-      // Assets are still cached in the vault for future use.
-      this._onLog('[Gateway] In-browser JVM unavailable — using external gateway.');
+      this._onLog('[Gateway] CheerpJ boot error: ' + (err.message || err));
     }
 
     // Notify SW of the gateway URL for API proxying
     await this._notifySW('SET_GATEWAY_URL', { url: this._gatewayBaseUrl });
 
-    // Check if the gateway is actually reachable
+    // Check if the gateway is actually reachable (may be CheerpJ or external)
     const reachable = await this._pingGateway();
     if (reachable) {
       this._setStatus('ready');
-      this._onLog('[Gateway] External gateway reachable at ' + this._gatewayBaseUrl);
+      this._onLog('[Gateway] Gateway reachable at ' + this._gatewayBaseUrl);
     } else {
       this._setStatus('awaiting_gateway');
-      this._onLog(
-        '[Gateway] ⚠ Gateway not reachable at ' + this._gatewayBaseUrl + '. ' +
-        'Start the IBKR Client Portal Gateway first:\n' +
-        '  cd system/IBKR.CSA/clientportal.gw && bin/run.sh root/conf.yaml\n' +
-        'Then accept the self-signed certificate at ' + this._gatewayBaseUrl
-      );
+      this._onLog('[Gateway] Gateway JVM active but HTTP endpoint not reachable from browser.');
     }
   }
 
   /**
-   * Open the Client Portal Gateway's login page and wait for authentication.
+   * Open the Client Portal Gateway login page and wait for authentication.
    *
-   * Per GettingStarted.md the correct flow is:
+   * Per GettingStarted.md:
    *   1. Navigate to the gateway URL (e.g. https://localhost:5000)
-   *   2. The gateway redirects to IBKR SSO for login + 2FA
+   *   2. Gateway redirects to IBKR SSO for login + 2FA
    *   3. After SSO, IBKR redirects BACK to the gateway with a session token
    *   4. The gateway confirms authentication
    *
-   * Opening the gateway URL — not the IBKR SSO URL directly — is critical:
-   * the gateway must be the SSO redirect target so it can capture the
-   * session cookie.  Going to IBKR SSO directly logs you into the web
-   * portal without establishing a session on the local gateway.
-   *
-   * @returns {Promise<boolean>}  true if authenticated, false if cancelled/timeout
+   * @returns {Promise<boolean>}  true if authenticated
    */
   async authenticate() {
     if (this._status === 'idle') await this.boot();
 
-    // Pre-flight: verify the gateway is reachable before opening a popup
+    // Pre-flight: try to reach the gateway before opening a popup
     const reachable = await this._pingGateway();
     if (!reachable) {
-      this._onLog(
-        '[Gateway] ✗ Cannot reach the gateway at ' + this._gatewayBaseUrl + '.\n' +
-        'Troubleshooting:\n' +
-        '  1. Start the gateway: cd system/IBKR.CSA/clientportal.gw && bin/run.sh root/conf.yaml\n' +
-        '  2. Visit ' + this._gatewayBaseUrl + ' in your browser and accept the SSL certificate\n' +
-        '  3. Check that the URL in Gateway Settings matches your gateway'
-      );
       throw new Error(
-        'Gateway not reachable at ' + this._gatewayBaseUrl + '. ' +
-        'Start the IBKR Client Portal Gateway and accept the SSL certificate first.'
+        'Gateway not reachable. The CheerpJ JVM started the gateway, but ' +
+        'the HTTP endpoint is not accessible from the browser. ' +
+        'Ensure the self-signed certificate is accepted at ' + this._gatewayBaseUrl
       );
     }
 
-    this._onLog('[Gateway] Opening Client Portal Gateway login…');
-    this._onLog('[Gateway] Complete sign-in (including 2FA) on the login page.');
-
-    // Open the GATEWAY's own URL — it will redirect to IBKR SSO and
-    // capture the session token when SSO redirects back.
+    this._onLog('[Gateway] Opening IBKR SSO login…');
     const loginUrl = this._gatewayBaseUrl;
     const ssoWindow = window.open(loginUrl, 'ibkr-sso');
 
@@ -173,12 +130,9 @@ export class GatewayManager {
         resolve(result);
       };
 
-      // Poll the gateway's auth status endpoint
       const pollTimer = setInterval(async () => {
-        // Check if popup was closed without completing login
         try {
           if (ssoWindow && ssoWindow.closed) {
-            // Give a short grace period — session may have just been established
             await this._sleep(1500);
             const valid = await this._checkAuthStatus();
             finish(valid);
@@ -186,7 +140,6 @@ export class GatewayManager {
           }
         } catch (_) { /* cross-origin access — expected */ }
 
-        // Check if authenticated via gateway
         const authed = await this._checkAuthStatus();
         if (authed) {
           try { ssoWindow?.close(); } catch (_) {}
@@ -194,7 +147,6 @@ export class GatewayManager {
         }
       }, SSO_POLL_INTERVAL_MS);
 
-      // Timeout — don't wait forever
       const timeout = setTimeout(() => {
         this._onLog('[Gateway] Login timed out after 5 minutes.');
         try { ssoWindow?.close(); } catch (_) {}
@@ -204,35 +156,27 @@ export class GatewayManager {
   }
 
   /**
-   * Login flow called from the UI when the user enters credentials.
+   * Login flow called from the UI when the user taps Sign In.
    *
-   * Credentials are saved via Face ID (for quick re-login).  Authentication
-   * is done by opening the Client Portal Gateway's login page, which
-   * redirects to IBKR SSO internally and captures the session token.
-   *
-   * @param {string} username  IBKR username (stored for Face ID)
-   * @param {string} password  IBKR password (stored encrypted via Face ID)
+   * @param {string} username
+   * @param {string} password
    * @returns {Promise<boolean>}
    */
   async loginWithCredentials(username, password) {
     if (this._status === 'idle' || this._status === 'booting') await this.boot();
 
-    // Check if we already have a valid session (e.g. from a previous SSO login)
     const alreadyAuthed = await this._checkAuthStatus();
     if (alreadyAuthed) {
       this._onLog('[Gateway] Existing session detected.');
       return true;
     }
 
-    // Open IBKR SSO for the user to authenticate
     const ok = await this.authenticate();
     if (ok) {
-      // Initialize the brokerage session after SSO
       await this._initBrokerageSession();
       this._startTickle();
       return true;
     }
-
     return false;
   }
 
@@ -249,10 +193,10 @@ export class GatewayManager {
           this._onLog('[Gateway] Session alive, expires: ' + new Date(data.ssoExpires).toLocaleTimeString());
         }
       }
-    } catch (_) { /* silent — gateway may be unreachable */ }
+    } catch (_) { /* silent */ }
   }
 
-  /** Logout and stop the gateway. */
+  /** Logout and stop the gateway JVM. */
   async logout() {
     clearInterval(this._tickleTimer);
     this._tickleTimer = null;
@@ -284,9 +228,7 @@ export class GatewayManager {
   }
 
   /**
-   * Public reachability check — returns true if the gateway responds.
-   * Use this from UI code instead of calling _pingGateway() directly.
-   *
+   * Public reachability check.
    * @returns {Promise<boolean>}
    */
   async checkConnection() {
@@ -295,24 +237,6 @@ export class GatewayManager {
 
   // ─── Private ────────────────────────────────────────────────────────────────
 
-  /**
-   * Ping the gateway to verify it is reachable.
-   *
-   * Attempts a simple fetch to the gateway root.  Because the gateway
-   * uses a self-signed SSL certificate, the browser may block the request
-   * unless the user has previously visited the gateway URL and accepted
-   * the certificate warning.
-   *
-   * Uses mode: 'no-cors' so the request succeeds even when the gateway
-   * doesn't return proper CORS headers.  The resulting opaque response
-   * (status 0, type 'opaque') still confirms the server responded.
-   *
-   * We accept any response as "reachable" — even errors mean the server
-   * is up.  Only network failures (connection refused, cert blocked)
-   * count as unreachable.
-   *
-   * @returns {Promise<boolean>}
-   */
   async _pingGateway() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
@@ -331,10 +255,6 @@ export class GatewayManager {
     }
   }
 
-  /**
-   * Check if the gateway has an authenticated session.
-   * Tries the gateway's /iserver/auth/status endpoint.
-   */
   async _checkAuthStatus() {
     try {
       const resp = await fetch(`${this._gatewayBaseUrl}/v1/api/iserver/auth/status`, {
@@ -344,9 +264,8 @@ export class GatewayManager {
       });
       if (!resp.ok) return false;
       const data = await resp.json();
-      // IBKR returns { authenticated: true, connected: true, ... } when valid
       if (data.authenticated) {
-      const expiry = Date.now() + SESSION_DURATION_MS;
+        const expiry = Date.now() + SESSION_DURATION_MS;
         await this._vault.set(SESSION_KEY, { expiry });
         await this._notifySW('SET_SESSION', { expiry });
         this._setStatus('authenticated');
@@ -356,10 +275,6 @@ export class GatewayManager {
     return false;
   }
 
-  /**
-   * After SSO login, initialize the brokerage session.
-   * This opens the trading session via /iserver/auth/ssodh/init.
-   */
   async _initBrokerageSession() {
     try {
       const resp = await fetch(`${this._gatewayBaseUrl}/v1/api/iserver/auth/ssodh/init`, {

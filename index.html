@@ -20,6 +20,8 @@
   <link rel="stylesheet" href="system/configs/main.chart/css/chart.css" />
   <link rel="stylesheet" href="system/configs/fundamentals/css/fundamentals.css" />
   <link rel="stylesheet" href="system/configs/news/css/news.css" />
+  <!-- CheerpJ 3.0 — WebAssembly JVM (runs IBKR Java gateway in-browser) -->
+  <script src="https://cjrtnc.leaningtech.com/3.0/cj3loader.js"></script>
   <style>
     /* ── Reset ───────────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -390,7 +392,7 @@
         placeholder="••••••••" enterkeyhint="go" />
     </div>
 
-    <button id="auth-login-btn" class="auth-btn">Sign in via Gateway</button>
+    <button id="auth-login-btn" class="auth-btn">Sign In</button>
 
     <!-- Shown only when a WebAuthn credential is already stored -->
     <button id="auth-faceid-btn" class="auth-faceid-btn" style="display:none;">
@@ -404,34 +406,15 @@
       Sign in with Face ID
     </button>
 
-    <!-- Gateway connection panel ──────────────────────────────────────── -->
+    <!-- Gateway status ──────────────────────────────────────────────── -->
     <div class="auth-gateway-panel" id="auth-gateway-panel">
       <div class="auth-gateway-heading">
         <span class="auth-gateway-dot" id="auth-gateway-dot"></span>
         <span id="auth-gateway-label">Gateway</span>
       </div>
-
-      <div class="auth-field" style="margin-top:0.4rem;">
-        <label for="auth-gateway-url">Gateway URL</label>
-        <input type="url" id="auth-gateway-url"
-          autocomplete="url" autocapitalize="none" spellcheck="false"
-          placeholder="https://localhost:5000" enterkeyhint="done" />
+      <div id="auth-gateway-info" style="font:400 10px -apple-system;color:var(--text-dim,#667);margin-top:0.3rem;line-height:1.5;">
+        The gateway JVM boots automatically via CheerpJ.
       </div>
-
-      <button type="button" id="auth-check-btn" class="auth-btn auth-btn-secondary">
-        Check Connection
-      </button>
-
-      <details class="auth-setup-help">
-        <summary>How to start the gateway</summary>
-        <ol class="auth-setup-steps">
-          <li>Install Java&nbsp;8+ or OpenJDK&nbsp;11</li>
-          <li>Open a terminal in <code>system/IBKR.CSA/clientportal.gw/</code></li>
-          <li>Run <code>bin/run.sh root/conf.yaml</code></li>
-          <li>Wait for <em>"Server listening on port 5000"</em></li>
-          <li>Visit <code>https://localhost:5000</code> in your browser and <strong>accept the SSL certificate</strong></li>
-        </ol>
-      </details>
     </div>
 
     <div id="auth-status" class="auth-status"></div>
@@ -600,12 +583,21 @@ const auth = new AuthController({
 
 /* ── Boot sequence ──────────────────────────────────────────────────────── */
 async function boot() {
-  splashStatus.textContent = 'Checking credentials…';
+  splashStatus.textContent = 'Loading CheerpJ JVM…';
   /* Request persistent storage early — iOS 15.4+ honours this when installed */
   Vault.requestPersistence().catch(() => {});
 
   /* Short pause so the splash renders before heavy async work */
   await new Promise((r) => setTimeout(r, 400));
+
+  /* Boot the gateway JVM automatically — user doesn't need to do anything */
+  try {
+    splashStatus.textContent = 'Starting IBKR gateway…';
+    await auth.gateway.boot();
+  } catch (_) {
+    /* Gateway boot failure is non-fatal — user can still reach an external gw */
+    log('[Boot] Gateway JVM boot failed — will try external gateway.');
+  }
 
   /* Attempt Face ID auto-login */
   let authed = false;
@@ -615,6 +607,15 @@ async function boot() {
   /* Show manual auth screen */
   hideSplash();
   authScreen.style.display = 'flex';
+
+  /* Update gateway dot based on current status */
+  const gwStatus = await auth.gateway.getStatus();
+  setGatewayDot(
+    gwStatus.status === 'ready' || gwStatus.status === 'authenticated' ? 'ok'
+    : gwStatus.status === 'booting' ? 'booting'
+    : gwStatus.status === 'error' ? 'fail'
+    : ''
+  );
 
   /* If a WebAuthn credential exists, reveal the Face ID button */
   const { default: FaceID } = await import('./system/SFTi.IOS/face/faceid.js');
@@ -645,52 +646,27 @@ function setAuthStatus(msg, isError = false) {
 function setGatewayDot(state) {
   const dot = $('auth-gateway-dot');
   const label = $('auth-gateway-label');
+  const info = $('auth-gateway-info');
   dot.className = 'auth-gateway-dot' + (state === 'ok' ? ' ok' : state === 'fail' ? ' fail' : '');
-  label.textContent = state === 'ok' ? 'Gateway connected'
-    : state === 'fail' ? 'Gateway not reachable'
+  label.textContent = state === 'ok' ? 'Gateway ready'
+    : state === 'fail' ? 'Gateway unavailable'
+    : state === 'booting' ? 'Booting JVM…'
     : 'Gateway';
-}
-
-async function applyGatewayUrl() {
-  const gwUrlInput = $('auth-gateway-url');
-  if (gwUrlInput && gwUrlInput.value.trim()) {
-    await auth.gateway.setGatewayUrl(gwUrlInput.value.trim());
+  if (info) {
+    info.textContent = state === 'ok' ? 'Connected — ready to sign in.'
+      : state === 'fail' ? 'CheerpJ could not start the gateway. Check the log console.'
+      : state === 'booting' ? 'Starting IBKR Client Portal Gateway via CheerpJ…'
+      : 'The gateway JVM boots automatically via CheerpJ.';
   }
 }
-
-/* ── Check Connection button ────────────────────────────────────────────── */
-$('auth-check-btn').addEventListener('click', async () => {
-  await applyGatewayUrl();
-  $('auth-check-btn').disabled = true;
-  setAuthStatus('Checking gateway…');
-  setGatewayDot('');
-
-  const ok = await auth.gateway.checkConnection();
-  setGatewayDot(ok ? 'ok' : 'fail');
-  $('auth-check-btn').disabled = false;
-
-  if (ok) {
-    setAuthStatus('Gateway is reachable. Enter your credentials and sign in.');
-  } else {
-    const gwStatus = await auth.gateway.getStatus();
-    setAuthStatus(
-      'Cannot reach ' + (gwStatus.gatewayUrl || 'the gateway') +
-      '. Start the gateway and accept its SSL certificate first.',
-      true
-    );
-  }
-});
 
 $('auth-login-btn').addEventListener('click', async () => {
   const user = $('auth-username').value.trim();
   const pass = $('auth-password').value;
   if (!user || !pass) { setAuthStatus('Enter your IBKR username and password.', true); return; }
 
-  /* Apply custom gateway URL if the user set one */
-  await applyGatewayUrl();
-
   $('auth-login-btn').disabled = true;
-  setAuthStatus('Connecting to gateway…');
+  setAuthStatus('Signing in…');
   try {
     await auth.manualLogin(user, pass);
   } catch (e) {

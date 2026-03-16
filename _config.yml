@@ -61,7 +61,7 @@ keep_files:
   - system/IBKR.CSA/clientportal.gw/dist
   - system/IBKR.CSA/clientportal.gw/build
   - system/IBKR.CSA/clientportal.gw/root
-  - system/cheerpJ.local/jvm
+  - system/cheerpJ.local
   - system/configs/assets
 
 # ── Defaults ─────────────────────────────────────────────────────────────────

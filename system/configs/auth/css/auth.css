@@ -159,33 +159,6 @@
 }
 .auth-btn-secondary:active { transform: scale(0.98); opacity: 0.85; }
 
-.auth-setup-help {
-  margin-top: 10px;
-}
-.auth-setup-help summary {
-  font: 11px -apple-system;
-  color: rgba(255, 255, 255, 0.3);
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  padding: 4px 0;
-}
-.auth-setup-help summary:hover {
-  color: rgba(255, 255, 255, 0.5);
-}
-.auth-setup-steps {
-  margin: 8px 0 0 16px;
-  padding: 0;
-  font: 11px -apple-system;
-  color: rgba(255, 255, 255, 0.35);
-  line-height: 1.7;
-}
-.auth-setup-steps code {
-  font: 10px "SF Mono", Menlo, monospace;
-  color: rgba(0, 212, 255, 0.6);
-  background: rgba(0, 212, 255, 0.06);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
 .auth-hint {
   font: 10px -apple-system;
   color: rgba(255, 255, 255, 0.25);
