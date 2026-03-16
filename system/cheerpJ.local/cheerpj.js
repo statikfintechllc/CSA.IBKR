@@ -127,9 +127,16 @@ export class CheerpJLocal {
 
     for (const path of allPaths) {
       const key = vaultKey(path);
-      try { if (await Vault.hasFile(key)) { cached++; continue; } } catch (_) {}
+
+      // Force refresh browser-gateway.jar to ensure SSO URL changes are picked up
+      const isBrowserGateway = path.includes('browser-gateway.jar');
+      if (isBrowserGateway) {
+        try { await Vault.deleteFile(key); } catch (_) {}
+      }
+
+      try { if (!isBrowserGateway && await Vault.hasFile(key)) { cached++; continue; } } catch (_) {}
       try {
-        const bytes = await Vault.fetchAndCache(path, key);
+        const bytes = await Vault.fetchAndCache(path, key, { force: isBrowserGateway });
         if (bytes) { fetched++; } else { failed.push(path.split('/').pop()); }
       } catch (_) { failed.push(path.split('/').pop()); }
     }
