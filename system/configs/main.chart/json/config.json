@@ -1,0 +1,20 @@
+{
+  "defaultPeriod": "1d",
+  "defaultRange": "3m",
+  "periods": ["1m", "5m", "15m", "1h", "1d", "1w"],
+  "indicators": {
+    "ema20": { "enabled": true, "color": "#00d4ff", "lineWidth": 1.5 },
+    "ema50": { "enabled": true, "color": "#ffb700", "lineWidth": 1.5 },
+    "bb20": { "enabled": true, "color": "rgba(167,139,250,0.6)", "lineWidth": 1 },
+    "rsi14": { "enabled": true, "color": "#f59e0b", "panel": "sub1", "refLines": [70, 30] },
+    "macd": { "enabled": true, "color": "#818cf8", "panel": "sub2" }
+  },
+  "chart": {
+    "type": "candle",
+    "smooth": false,
+    "gridRows": 5,
+    "gridCols": 6,
+    "volumeHeightRatio": 0.15,
+    "subPanelHeightRatio": 0.18
+  }
+}

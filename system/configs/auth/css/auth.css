@@ -1,0 +1,167 @@
+/**
+ * configs/auth/css/auth.css
+ * Auth screen — full-screen glass login panel.
+ */
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 212, 255, 0.08) 0%, #0a0a0f 70%);
+  z-index: 1000;
+  padding: env(safe-area-inset-top, 20px) 24px env(safe-area-inset-bottom, 20px);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  background: rgba(15, 15, 28, 0.9);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 20px;
+  padding: 36px 28px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.auth-logo {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.auth-logo-text {
+  font: 700 22px -apple-system, SF Pro Display, sans-serif;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+.auth-logo-sub {
+  font: 11px -apple-system, SF Pro Text, sans-serif;
+  color: rgba(0, 212, 255, 0.6);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.auth-field {
+  margin-bottom: 14px;
+}
+.auth-field label {
+  display: block;
+  font: 11px -apple-system;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.auth-field input {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #fff;
+  font: 15px -apple-system, SF Pro Text, sans-serif;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+}
+.auth-field input:focus {
+  border-color: rgba(0, 212, 255, 0.5);
+}
+
+.auth-btn {
+  width: 100%;
+  padding: 14px;
+  margin-top: 8px;
+  background: linear-gradient(135deg, #0077b6, #00b4d8);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font: 600 15px -apple-system, SF Pro Display, sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.auth-btn:active { transform: scale(0.98); opacity: 0.85; }
+.auth-btn:disabled { opacity: 0.4; pointer-events: none; }
+
+.auth-faceid-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 12px;
+  color: #00d4ff;
+  font: 14px -apple-system;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.auth-faceid-btn:hover { background: rgba(0, 212, 255, 0.14); }
+
+.auth-status {
+  margin-top: 14px;
+  min-height: 20px;
+  text-align: center;
+  font: 12px -apple-system;
+  color: rgba(0, 212, 255, 0.7);
+}
+.auth-status.error { color: rgba(239, 83, 80, 0.85); }
+
+/* ── Advanced gateway settings ──────────────────────────────────────────── */
+.auth-gateway-panel {
+  margin-top: 18px;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+.auth-gateway-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 12px -apple-system;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.auth-gateway-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #555;
+  transition: background 0.3s, box-shadow 0.3s;
+  flex-shrink: 0;
+}
+.auth-gateway-dot.ok {
+  background: #26a69a;
+  box-shadow: 0 0 6px #26a69a;
+}
+.auth-gateway-dot.fail {
+  background: #ef5350;
+  box-shadow: 0 0 6px rgba(239, 83, 80, 0.5);
+}
+.auth-btn-secondary {
+  background: rgba(0, 212, 255, 0.1);
+  color: #00d4ff;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  font-size: 13px;
+  padding: 10px;
+  margin-top: 6px;
+}
+.auth-btn-secondary:active { transform: scale(0.98); opacity: 0.85; }
+
+.auth-hint {
+  font: 10px -apple-system;
+  color: rgba(255, 255, 255, 0.25);
+  line-height: 1.5;
+  margin-top: 6px;
+}

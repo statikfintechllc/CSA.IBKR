@@ -1,0 +1,14 @@
+{
+  "faceid": {
+    "enabled": true,
+    "fallbackToPassword": true
+  },
+  "gateway": {
+    "autoStart": true,
+    "confPath": "system/IBKR.CSA/clientportal.gw/root/conf.yaml"
+  },
+  "session": {
+    "persistAcrossRestarts": true,
+    "tickleIntervalSeconds": 55
+  }
+}
