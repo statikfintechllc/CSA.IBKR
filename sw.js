@@ -2,37 +2,46 @@
  * sw.js — CSA.IBKR Service Worker
  * Manages session tokens, proxies IBKR gateway HTTP calls,
  * caches static assets, and enables offline splash.
+ *
+ * Universally portable: all paths are derived at runtime from
+ * self.registration.scope so the app works from any subdirectory
+ * (e.g. GitHub Pages /CSA.IBKR/ or a custom domain /).
  */
 
-const SW_VERSION = '1.0.0';
+const SW_VERSION = '1.1.0';
 const CACHE_NAME = `csa-ibkr-v${SW_VERSION}`;
 const IBKR_API_BASE = 'https://api.ibkr.com/v1/api';
 
+// Compute the app root from the SW's own scope — works for any deploy path.
+// e.g. https://user.github.io/CSA.IBKR/ or http://localhost:5500/
+const BASE = self.registration.scope; // guaranteed to end with '/'
+
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/system/cheerpJ.local/cheerpj.js',
-  '/system/cheerpJ.local/jvm/runtime.js',
-  '/system/cheerpJ.local/jvm/classloader.js',
-  '/system/cheerpJ.local/jvm/network.js',
-  '/system/SFTi.IOS/face/faceid.js',
-  '/system/SFTi.IOS/storage/vault.js',
-  '/system/SFTi.IOS/server/gateway.js',
-  '/system/SFTi.IOS/trades/trades.js',
-  '/system/SFTi.CRPs/LineChart.js',
-  '/system/SFTi.CRPs/CandleChart.js',
-  '/system/SFTi.CRPs/VolumeChart.js',
-  '/system/SFTi.CIPs/SMA.js',
-  '/system/SFTi.CIPs/EMA.js',
-  '/system/SFTi.CIPs/RSI.js',
-  '/system/SFTi.CIPs/MACD.js',
-  '/system/SFTi.CIPs/BB.js',
-  '/system/configs/main.chart/css/chart.css',
-  '/system/configs/auth/css/auth.css',
-  '/system/configs/ticker.input/css/ticker.css',
-  '/system/configs/fundamentals/css/fundamentals.css',
-  '/system/configs/news/css/news.css',
+  BASE,
+  `${BASE}index.html`,
+  `${BASE}manifest.json`,
+  `${BASE}system/cheerpJ.local/cheerpj.js`,
+  `${BASE}system/cheerpJ.local/jvm/runtime.js`,
+  `${BASE}system/cheerpJ.local/jvm/classloader.js`,
+  `${BASE}system/cheerpJ.local/jvm/network.js`,
+  `${BASE}system/SFTi.IOS/face/faceid.js`,
+  `${BASE}system/SFTi.IOS/storage/vault.js`,
+  `${BASE}system/SFTi.IOS/server/gateway.js`,
+  `${BASE}system/SFTi.IOS/trades/trades.js`,
+  `${BASE}system/SFTi.CRPs/LineChart.js`,
+  `${BASE}system/SFTi.CRPs/CandleChart.js`,
+  `${BASE}system/SFTi.CRPs/VolumeChart.js`,
+  `${BASE}system/SFTi.CIPs/SMA.js`,
+  `${BASE}system/SFTi.CIPs/EMA.js`,
+  `${BASE}system/SFTi.CIPs/RSI.js`,
+  `${BASE}system/SFTi.CIPs/MACD.js`,
+  `${BASE}system/SFTi.CIPs/BB.js`,
+  `${BASE}system/configs/main.chart/css/chart.css`,
+  `${BASE}system/configs/auth/css/auth.css`,
+  `${BASE}system/configs/ticker.input/css/ticker.css`,
+  `${BASE}system/configs/fundamentals/css/fundamentals.css`,
+  `${BASE}system/configs/news/css/news.css`,
+  `${BASE}system/configs/assets/icons/icon.svg`,
 ];
 
 // ─── Session store (in-memory; survives tab close via vault.js IDB) ───────────
@@ -43,7 +52,19 @@ let gatewayReady = false;
 // ─── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      // Cache each asset individually — a single 404 won't abort the install.
+      await Promise.allSettled(
+        STATIC_ASSETS.map(async (url) => {
+          try {
+            const res = await fetch(url);
+            if (res && res.status === 200) await cache.put(url, res);
+          } catch (_) { /* silently skip unavailable assets */ }
+        })
+      );
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -89,19 +110,19 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Gateway API calls → inject session header + proxy
+  // 1. Gateway API calls — same-origin /v1/api/* or calls to localhost (Wasm JVM)
   if (url.pathname.startsWith('/v1/api/') || url.hostname === 'localhost') {
     event.respondWith(handleGatewayRequest(request));
     return;
   }
 
-  // 2. IBKR OAuth callback → capture token
+  // 2. IBKR OAuth callback — capture token and redirect back to app root
   if (url.pathname.includes('/oauth/callback') || url.searchParams.has('oauth_token')) {
     event.respondWith(handleOAuthCallback(request));
     return;
   }
 
-  // 3. Static assets → cache-first
+  // 3. Static assets — cache-first with network fallback
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((res) => {
       if (res && res.status === 200 && res.type !== 'opaque') {
@@ -109,7 +130,7 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((c) => c.put(request, clone));
       }
       return res;
-    }).catch(() => caches.match('/index.html')))
+    }).catch(() => caches.match(`${BASE}index.html`)))
   );
 });
 
@@ -164,8 +185,8 @@ async function handleOAuthCallback(request) {
     broadcast({ type: 'SESSION_READY', payload: { token, expiry: sessionExpiry } });
   }
 
-  // Redirect back to PWA root
-  return Response.redirect('/', 302);
+  // Redirect back to the app root (works regardless of deploy path).
+  return Response.redirect(BASE, 302);
 }
 
 // ─── Broadcast to all clients ──────────────────────────────────────────────────
@@ -174,3 +195,4 @@ function broadcast(message) {
     clients.forEach((c) => c.postMessage(message));
   });
 }
+

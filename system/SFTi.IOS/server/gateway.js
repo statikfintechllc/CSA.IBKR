@@ -77,8 +77,10 @@ export class GatewayManager {
       // and posts SESSION_READY back to all clients (including this one).
       // We use window.open() rather than window.location.href so this JS
       // context (and the message listener above) stay alive.
+      // Derive the app root universally — works from any subdirectory.
+      const appRoot = new URL('./', location.href).href;
       window.open(
-        `${IBKR_AUTH_URL}&redirect_uri=${encodeURIComponent(location.origin + '/')}`,
+        `${IBKR_AUTH_URL}&redirect_uri=${encodeURIComponent(appRoot)}`,
         '_blank',
         'noopener'
       );

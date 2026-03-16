@@ -13,6 +13,8 @@
   <meta name="description" content="SFTi IBKR Client Portal — self-contained in-browser trading terminal." />
   <title>CSA.IBKR</title>
   <link rel="manifest" href="manifest.json" />
+  <!-- iOS home screen icon — inline SVG so no separate PNG file is needed -->
+  <link rel="apple-touch-icon" href="system/configs/assets/icons/icon.svg" />
   <link rel="stylesheet" href="system/configs/auth/css/auth.css" />
   <link rel="stylesheet" href="system/configs/ticker.input/css/ticker.css" />
   <link rel="stylesheet" href="system/configs/main.chart/css/chart.css" />
@@ -528,7 +530,8 @@ import { Vault }              from './system/SFTi.IOS/storage/vault.js';
 
 /* ── Service Worker ─────────────────────────────────────────────────────── */
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+  // Use relative path so this works from any subdirectory (GitHub Pages, custom domain, etc.)
+  navigator.serviceWorker.register('./sw.js', { scope: './' })
     .catch((e) => console.warn('[CSA.IBKR] SW registration failed:', e));
 }
 
