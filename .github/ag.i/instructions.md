@@ -183,4 +183,6 @@ etc
 so the index will need to link to all of the components in system(all made global, so everything in CIPs CRPs for charting cheerjP.local for server management, configs to align and monitor everything visually so its all smooth and sota)
 all need to be documented too so any added widgets get built the same way.
 
+Use real liquid glass code in the pwa and full system Architecture, This is a moat breaking Architecture and system.
+
 Do you see and understand the design goal and philosophy and architecture i want? DO NOT BUILD YET.
