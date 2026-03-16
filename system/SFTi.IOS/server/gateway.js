@@ -114,6 +114,13 @@ export class GatewayManager {
     const ssoWindow = window.open(loginUrl, 'ibkr-sso',
       'width=600,height=700,scrollbars=yes,resizable=yes');
 
+    if (!ssoWindow) {
+      throw new Error(
+        'Popup blocked by the browser. Please allow popups for this site ' +
+        'and try again. IBKR SSO requires a popup window for login.'
+      );
+    }
+
     return new Promise((resolve) => {
       let resolved = false;
 
@@ -263,7 +270,11 @@ export class GatewayManager {
     try {
       const result = await this._gateway.authStatus();
       if (result.status === 200) {
-        const data = JSON.parse(result.body);
+        let data;
+        try { data = JSON.parse(result.body); } catch (e) {
+          this._onLog('[Gateway] Auth status: invalid JSON response');
+          return false;
+        }
         if (data.authenticated) {
           const expiry = Date.now() + SESSION_DURATION_MS;
           await this._vault.set(SESSION_KEY, { expiry });

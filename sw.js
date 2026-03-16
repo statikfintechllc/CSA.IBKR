@@ -141,17 +141,6 @@ self.addEventListener('fetch', (event) => {
 // the GatewayManager.proxyRequest() method in the main thread.  If a request
 // somehow arrives at the SW, we return a helpful JSON response.
 async function handleBridgeApiRequest(request) {
-  // Check session expiry
-  if (sessionExpiry && Date.now() > sessionExpiry) {
-    gatewayReady = false;
-    sessionExpiry = null;
-    broadcast({ type: 'SESSION_EXPIRED' });
-    return new Response(
-      JSON.stringify({ error: 'Session expired. Please sign in again.', code: 401 }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
   // The main thread should handle API calls through the CheerpJ bridge.
   // This response tells calling code to use GatewayManager.proxyRequest() instead.
   return new Response(

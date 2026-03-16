@@ -121,7 +121,9 @@ export class Trades {
         method, path, body ? JSON.stringify(body) : null
       );
       if (result.status && result.status >= 200 && result.status < 300) {
-        return JSON.parse(result.body);
+        try { return JSON.parse(result.body); } catch (e) {
+          throw new Error(`IBKR API response not valid JSON: ${result.body}`);
+        }
       }
       throw new Error(`IBKR API error ${result.status}: ${result.body || result.error}`);
     }
