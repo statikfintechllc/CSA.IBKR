@@ -1,27 +1,24 @@
 /**
  * sw.js — CSA.IBKR Service Worker
- * Manages session state, proxies IBKR gateway HTTP calls,
- * caches static assets, and enables offline splash.
+ * Manages session state, caches static assets, and enables offline splash.
+ *
+ * API proxy change:  The old design forwarded /v1/api/* to a localhost gateway.
+ * The upgraded design uses CheerpJ's in-browser Java bridge for API calls,
+ * so the SW no longer proxies HTTP to localhost.  It still intercepts /v1/api/*
+ * requests and relays them to the main thread via postMessage, where the
+ * CheerpJ bridge handles the actual IBKR HTTP call.
  *
  * Universally portable: all paths are derived at runtime from
- * self.registration.scope so the app works from any subdirectory
- * (e.g. GitHub Pages /CSA.IBKR/ or a custom domain /).
- *
- * API proxy:
- *   Requests to /v1/api/* from the main thread are intercepted and
- *   forwarded to the configured gateway URL (default: https://localhost:5000).
- *   Auth-related endpoints (/iserver/auth/*, /sso/*, /tickle, /logout)
- *   are always allowed through — they don't require a pre-existing session.
+ * self.registration.scope so the app works from any subdirectory.
  */
 
-const SW_VERSION = '1.3.0';
+const SW_VERSION = '2.0.0';
 const CACHE_NAME = `csa-ibkr-v${SW_VERSION}`;
 
 // Session duration — IBKR requires re-auth at least once per day
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
 
 // Compute the app root from the SW's own scope — works for any deploy path.
-// e.g. https://user.github.io/CSA.IBKR/ or http://localhost:5500/
 const BASE = self.registration.scope; // guaranteed to end with '/'
 
 const STATIC_ASSETS = [
@@ -52,16 +49,6 @@ const STATIC_ASSETS = [
 // ─── Session store ────────────────────────────────────────────────────────────
 let sessionExpiry = null;
 let gatewayReady = false;
-let gatewayBaseUrl = 'https://localhost:5000';
-
-// Auth-related paths that are always allowed through without a session.
-// These are needed to ESTABLISH a session in the first place.
-const AUTH_PASS_THROUGH = [
-  '/iserver/auth/',
-  '/sso/',
-  '/tickle',
-  '/logout',
-];
 
 // ─── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -108,15 +95,10 @@ self.addEventListener('message', (event) => {
       gatewayReady = false;
       broadcast({ type: 'SESSION_CLEARED' });
       break;
-    case 'SET_GATEWAY_URL':
-      if (payload?.url) {
-        gatewayBaseUrl = payload.url.replace(/\/+$/, '');
-      }
-      break;
     case 'GET_STATUS':
       event.source.postMessage({
         type: 'STATUS',
-        payload: { gatewayReady, sessionExpiry, gatewayBaseUrl },
+        payload: { gatewayReady, sessionExpiry, mode: 'browser-native' },
       });
       break;
   }
@@ -127,10 +109,12 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Gateway API calls — same-origin /v1/api/*
-  //    These are proxied to the actual gateway (localhost:5000 or custom URL).
+  // 1. Gateway API calls — /v1/api/*
+  //    In browser-native mode, these are handled by the CheerpJ bridge
+  //    in the main thread.  The SW returns a message telling the client
+  //    to route through the Java bridge instead.
   if (url.pathname.startsWith('/v1/api/')) {
-    event.respondWith(handleGatewayRequest(request));
+    event.respondWith(handleBridgeApiRequest(request));
     return;
   }
 
@@ -152,28 +136,13 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// ─── Gateway proxy ─────────────────────────────────────────────────────────────
-async function handleGatewayRequest(request) {
-  const url = new URL(request.url);
-  const apiPath = url.pathname + url.search;
-
-  // Auth-related endpoints are ALWAYS forwarded — they're needed
-  // to establish a session and must not be blocked.
-  const isAuthPath = AUTH_PASS_THROUGH.some((p) => apiPath.includes(p));
-
-  // For non-auth requests, require an active session
-  if (!isAuthPath && !gatewayReady) {
-    return new Response(
-      JSON.stringify({
-        error: 'Not authenticated. Please sign in via the Client Portal Gateway first.',
-        code: 401,
-      }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
+// ─── Bridge API handler ────────────────────────────────────────────────────────
+// In browser-native mode, /v1/api/* requests should be made directly through
+// the GatewayManager.proxyRequest() method in the main thread.  If a request
+// somehow arrives at the SW, we return a helpful JSON response.
+async function handleBridgeApiRequest(request) {
   // Check session expiry
-  if (!isAuthPath && sessionExpiry && Date.now() > sessionExpiry) {
+  if (sessionExpiry && Date.now() > sessionExpiry) {
     gatewayReady = false;
     sessionExpiry = null;
     broadcast({ type: 'SESSION_EXPIRED' });
@@ -183,34 +152,18 @@ async function handleGatewayRequest(request) {
     );
   }
 
-  // Proxy to the gateway base URL
-  const proxyUrl = `${gatewayBaseUrl}${apiPath}`;
-
-  try {
-    const headers = new Headers(request.headers);
-    headers.set('X-CSA-Client', 'SFTi-PWA');
-
-    const proxied = new Request(proxyUrl, {
-      method: request.method,
-      headers,
-      body: request.method !== 'GET' && request.method !== 'HEAD'
-        ? await request.blob()
-        : undefined,
-      credentials: 'include',
-    });
-    return await fetch(proxied);
-  } catch (err) {
-    // Gateway unreachable — return a clear error
-    return new Response(
-      JSON.stringify({
-        error: `Gateway unreachable at ${gatewayBaseUrl}. ` +
-          'Ensure the IBKR Client Portal Gateway is running. ' +
-          'See: system/IBKR.CSA/clientportal.gw/doc/GettingStarted.md',
-        code: 503,
-      }),
-      { status: 503, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+  // The main thread should handle API calls through the CheerpJ bridge.
+  // This response tells calling code to use GatewayManager.proxyRequest() instead.
+  return new Response(
+    JSON.stringify({
+      error: 'API calls should be routed through the CheerpJ browser gateway bridge. ' +
+             'Use GatewayManager.proxyRequest() in the main thread.',
+      code: 503,
+      mode: 'browser-native',
+      hint: 'import GatewayManager and call gateway.proxyRequest(method, path, body)',
+    }),
+    { status: 503, headers: { 'Content-Type': 'application/json' } }
+  );
 }
 
 // ─── OAuth callback handler ────────────────────────────────────────────────────

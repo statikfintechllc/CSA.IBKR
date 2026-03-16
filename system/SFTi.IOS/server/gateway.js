@@ -1,35 +1,32 @@
 /**
  * SFTi.IOS/server/gateway.js — IBKR Gateway Lifecycle Manager
  *
- * Manages the full lifecycle of the IBKR Client Portal Gateway:
+ * Manages the full lifecycle of the IBKR Client Portal Gateway
+ * running **entirely in the browser** via CheerpJ 3.0.
  *
- *   boot()                   → check for running gateway, then try CheerpJ
- *   authenticate()           → open gateway login page (IBKR SSO), poll for session
+ * The key insight: the stock IBKR gateway (Vert.x / Netty) cannot run
+ * in-browser because CheerpJ 3.0 cannot create TCP ServerSocket bindings.
+ * Instead, we use BrowserGateway.java — a purpose-built Java class that
+ * uses java.net.HttpURLConnection (which CheerpJ maps to the browser's
+ * fetch API).  This lets the gateway proxy HTTP calls to api.ibkr.com
+ * without any localhost server.
+ *
+ *   boot()                   → load CheerpJ JVM + BrowserGateway bridge
+ *   authenticate()           → open IBKR SSO popup, poll for session
  *   loginWithCredentials()   → authenticate, then init brokerage session
- *   tickle()                 → keep session alive (POST /tickle every 55s)
- *   logout()                 → clear session + stop JVM
+ *   tickle()                 → keep session alive
+ *   logout()                 → clear session
  *   getStatus()              → current gateway + auth state
- *   checkConnection()        → public reachability test
- *
- * Boot strategy (fast first, slow fallback):
- *   1. Immediately ping the configured gateway URL (default localhost:5000)
- *   2. If reachable → ready (fast path, ~1-2 seconds)
- *   3. If not → attempt CheerpJ JVM boot in background (slow, may not work)
- *   4. CheerpJ has a known limitation: browsers cannot create TCP server
- *      sockets, so Vert.x/Netty will fail to bind.  Kept for forward compat.
+ *   checkConnection()        → bridge reachability test
  */
 
 import { getGateway } from '../../cheerpJ.local/cheerpj.js';
 import { Vault } from '../storage/vault.js';
 
 const SESSION_KEY = 'gw_session';
-const GATEWAY_URL_KEY = 'gw_base_url';
 const TICKLE_INTERVAL_MS = 55_000;
 const SSO_POLL_INTERVAL_MS = 2000;
 const SSO_TIMEOUT_MS = 300_000; // 5 minutes
-const PING_TIMEOUT_MS = 4000;
-
-const DEFAULT_GATEWAY_URL = 'https://localhost:5000';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
 
 export class GatewayManager {
@@ -38,84 +35,84 @@ export class GatewayManager {
     this._onError = onError || console.error;
     this._onStatusChange = onStatusChange || (() => {});
     this._vault = new Vault('sfti.ios.server');
-    this._gateway = null;
+    this._gateway = null; // CheerpJLocal instance
     this._tickleTimer = null;
     this._status = 'idle'; // idle | booting | ready | awaiting_gateway | authenticated | error
-    this._gatewayBaseUrl = DEFAULT_GATEWAY_URL;
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /**
-   * Boot sequence — fast path first, CheerpJ fallback in background.
+   * Boot sequence — load CheerpJ JVM and the BrowserGateway bridge.
    *
-   * 1. Restore saved gateway URL
-   * 2. Immediately ping the gateway (fast — just an HTTP request)
-   * 3. If reachable → set status 'ready' and return
-   * 4. If not → set status 'awaiting_gateway', fire off CheerpJ in background
+   * 1. Initialize CheerpJ 3.0 (WebAssembly JVM)
+   * 2. Load all IBKR JARs via cheerpjRunLibrary()
+   * 3. Resolve BrowserGateway class for Java-JS interop
+   * 4. Initialize the bridge with IBKR API endpoints
    *
-   * This ensures the app is interactive within seconds, not minutes.
+   * No localhost, no ServerSocket, no Netty — pure browser-native.
    */
   async boot() {
     if (this._status !== 'idle') return;
     this._setStatus('booting');
 
-    // Restore persisted gateway URL
-    const savedUrl = await this._vault.get(GATEWAY_URL_KEY);
-    if (savedUrl) this._gatewayBaseUrl = savedUrl;
+    this._onLog('[Gateway] Booting CheerpJ browser-native gateway…');
 
-    // Notify SW of gateway URL for API proxying
-    await this._notifySW('SET_GATEWAY_URL', { url: this._gatewayBaseUrl });
+    try {
+      this._gateway = getGateway({
+        onLog:   (msg) => this._onLog(msg),
+        onError: (err) => this._onLog('[Gateway] CheerpJ: ' + (err.message || err)),
+        onReady: () => {
+          if (this._status === 'booting' || this._status === 'awaiting_gateway') {
+            this._setStatus('ready');
+            this._onLog('[Gateway] Browser gateway bridge is ready.');
+          }
+        },
+      });
 
-    // Fast path: check for an already-running gateway
-    this._onLog('[Gateway] Connecting to ' + this._gatewayBaseUrl + '…');
-    const reachable = await this._pingGateway();
-    if (reachable) {
-      this._setStatus('ready');
-      this._onLog('[Gateway] Connected.');
-      return;
+      await this._gateway.boot();
+
+      // Verify the bridge is alive
+      if (this._gateway.bridge) {
+        this._setStatus('ready');
+        this._onLog('[Gateway] Connected — browser-native mode (no localhost).');
+      } else {
+        this._setStatus('awaiting_gateway');
+        this._onLog('[Gateway] JVM loaded but bridge not yet available.');
+      }
+    } catch (err) {
+      this._setStatus('awaiting_gateway');
+      this._onLog('[Gateway] CheerpJ boot error: ' + (err.message || err));
+      this._onLog('[Gateway] Retrying in background…');
+
+      // Retry once after a delay
+      setTimeout(() => this._retryBoot(), 5000);
     }
-
-    // Gateway not found — set status immediately so UI is responsive
-    this._setStatus('awaiting_gateway');
-    this._onLog('[Gateway] Gateway not reachable — attempting CheerpJ JVM boot…');
-
-    // Non-blocking: try CheerpJ in background (may fail due to browser limitations)
-    this._tryCheerpJBackground();
   }
 
   /**
-   * Open the Client Portal Gateway login page and wait for authentication.
+   * Open the IBKR SSO login page in a popup and wait for authentication.
    *
-   * Per GettingStarted.md:
-   *   1. Navigate to the gateway URL (e.g. https://localhost:5000)
-   *   2. Gateway redirects to IBKR SSO for login + 2FA
-   *   3. After SSO, IBKR redirects BACK to the gateway with a session token
-   *   4. The gateway confirms authentication
+   * The SSO login happens at gdcdyn.interactivebrokers.com.  After the user
+   * logs in (username + password + 2FA), the session cookies are established.
+   * We poll the Java bridge's authStatus() to detect when auth completes.
    *
    * @returns {Promise<boolean>}  true if authenticated
    */
   async authenticate() {
     if (this._status === 'idle') await this.boot();
 
-    // Pre-flight: fresh ping to gateway (it may have come up since boot)
-    const reachable = await this._pingGateway();
-    if (!reachable) {
+    if (!this._gateway || !this._gateway.bridge) {
       throw new Error(
-        'Gateway not reachable at ' + this._gatewayBaseUrl + '. ' +
-        'Ensure the Client Portal Gateway is running and the self-signed ' +
-        'certificate is accepted in your browser.'
+        'Gateway bridge not ready. CheerpJ JVM may still be loading. ' +
+        'Please wait and try again.'
       );
     }
 
-    // Gateway found — update status if we were still awaiting
-    if (this._status === 'awaiting_gateway') {
-      this._setStatus('ready');
-    }
-
     this._onLog('[Gateway] Opening IBKR SSO login…');
-    const loginUrl = this._gatewayBaseUrl;
-    const ssoWindow = window.open(loginUrl, 'ibkr-sso');
+    const loginUrl = await this._gateway.ssoLoginUrl();
+    const ssoWindow = window.open(loginUrl, 'ibkr-sso',
+      'width=600,height=700,scrollbars=yes,resizable=yes');
 
     return new Promise((resolve) => {
       let resolved = false;
@@ -178,35 +175,31 @@ export class GatewayManager {
     return false;
   }
 
-  /** Send a keep-alive tickle to the gateway. */
+  /** Send a keep-alive tickle via the Java bridge. */
   async tickle() {
+    if (!this._gateway) return;
     try {
-      const resp = await fetch(`${this._gatewayBaseUrl}/v1/api/tickle`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.session && data.ssoExpires) {
-          this._onLog('[Gateway] Session alive, expires: ' + new Date(data.ssoExpires).toLocaleTimeString());
-        }
+      const result = await this._gateway.tickle();
+      if (result.status === 200) {
+        try {
+          const data = JSON.parse(result.body);
+          if (data.session && data.ssoExpires) {
+            this._onLog('[Gateway] Session alive, expires: ' + new Date(data.ssoExpires).toLocaleTimeString());
+          }
+        } catch (_) {}
       }
     } catch (_) { /* silent */ }
   }
 
-  /** Logout and stop the gateway JVM. */
+  /** Logout and clear session. */
   async logout() {
     clearInterval(this._tickleTimer);
     this._tickleTimer = null;
 
-    try {
-      await fetch(`${this._gatewayBaseUrl}/v1/api/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch (_) { /* silent */ }
+    if (this._gateway) {
+      try { await this._gateway.doLogout(); } catch (_) {}
+    }
 
-    await this._notifySW('CLEAR_SESSION');
     await this._vault.delete(SESSION_KEY);
 
     if (this._gateway) await this._gateway.stop();
@@ -221,111 +214,77 @@ export class GatewayManager {
       status: this._status,
       authenticated: this._status === 'authenticated',
       sessionExpiry: session?.expiry || null,
-      gatewayUrl: this._gatewayBaseUrl,
+      bridgeReady: !!(this._gateway && this._gateway.bridge),
+      mode: 'browser-native',
     };
   }
 
   /**
-   * Public reachability check.
+   * Public reachability check — tests if the Java bridge is alive.
    * @returns {Promise<boolean>}
    */
   async checkConnection() {
-    return this._pingGateway();
-  }
-
-  // ─── Private ────────────────────────────────────────────────────────────────
-
-  /**
-   * Try to start the gateway via CheerpJ in the background.
-   * This is fire-and-forget — it does not block the boot flow.
-   * CheerpJ 3.0 cannot create TCP server sockets, so this will likely fail,
-   * but we attempt it for forward compatibility.
-   */
-  async _tryCheerpJBackground() {
+    if (!this._gateway || !this._gateway.bridge) return false;
     try {
-      this._gateway = getGateway({
-        onLog: (msg) => this._onLog(msg),
-        onError: (err) => this._onLog('[Gateway] CheerpJ error: ' + (err.message || err)),
-        onReady: async () => {
-          const up = await this._pingGateway();
-          if (up && this._status === 'awaiting_gateway') {
-            this._setStatus('ready');
-            this._onLog('[Gateway] CheerpJ gateway is now reachable.');
-          }
-        },
-      });
-      await this._gateway.boot();
-    } catch (err) {
-      this._onLog('[Gateway] CheerpJ could not start the gateway: ' + (err.message || err));
-    }
-
-    // Final check after CheerpJ attempt
-    const up = await this._pingGateway();
-    if (up && this._status === 'awaiting_gateway') {
-      this._setStatus('ready');
-      this._onLog('[Gateway] Gateway is now reachable.');
-    }
-  }
-
-  async _pingGateway() {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
-    try {
-      await fetch(this._gatewayBaseUrl, {
-        method: 'GET',
-        mode: 'no-cors',
-        credentials: 'include',
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      return true;
+      const isReady = await this._gateway.bridge.isReady();
+      return !!isReady;
     } catch (_) {
-      clearTimeout(timer);
       return false;
     }
   }
 
-  async _checkAuthStatus() {
+  /**
+   * Proxy an arbitrary API request through the Java bridge.
+   * @param {string} method  HTTP method
+   * @param {string} path    API path (e.g. /v1/api/iserver/auth/status)
+   * @param {string|null} body  JSON body
+   * @returns {Promise<{status:number, body:string, error?:string}>}
+   */
+  async proxyRequest(method, path, body = null) {
+    if (!this._gateway) throw new Error('Gateway not initialized');
+    return this._gateway.proxyRequest(method, path, body);
+  }
+
+  // ─── Private ────────────────────────────────────────────────────────────────
+
+  async _retryBoot() {
+    if (this._status !== 'awaiting_gateway') return;
+    this._onLog('[Gateway] Retrying CheerpJ boot…');
+    this._status = 'idle'; // Reset to allow re-boot
     try {
-      const resp = await fetch(`${this._gatewayBaseUrl}/v1/api/iserver/auth/status`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!resp.ok) return false;
-      const data = await resp.json();
-      if (data.authenticated) {
-        const expiry = Date.now() + SESSION_DURATION_MS;
-        await this._vault.set(SESSION_KEY, { expiry });
-        await this._notifySW('SET_SESSION', { expiry });
-        this._setStatus('authenticated');
-        return true;
+      await this.boot();
+    } catch (_) {
+      this._onLog('[Gateway] Retry failed. CheerpJ may not be supported in this browser.');
+    }
+  }
+
+  async _checkAuthStatus() {
+    if (!this._gateway || !this._gateway.bridge) return false;
+    try {
+      const result = await this._gateway.authStatus();
+      if (result.status === 200) {
+        const data = JSON.parse(result.body);
+        if (data.authenticated) {
+          const expiry = Date.now() + SESSION_DURATION_MS;
+          await this._vault.set(SESSION_KEY, { expiry });
+          this._setStatus('authenticated');
+          return true;
+        }
       }
-    } catch (_) { /* gateway unreachable */ }
+    } catch (_) { /* bridge error */ }
     return false;
   }
 
   async _initBrokerageSession() {
+    if (!this._gateway) return;
     try {
-      const resp = await fetch(`${this._gatewayBaseUrl}/v1/api/iserver/auth/ssodh/init`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publish: true, compete: true }),
-      });
-      if (resp.ok) {
+      const result = await this._gateway.ssoDHInit();
+      if (result.status === 200) {
         this._onLog('[Gateway] Brokerage session initialized.');
       }
     } catch (_) {
-      this._onLog('[Gateway] Brokerage session init skipped (gateway unreachable).');
+      this._onLog('[Gateway] Brokerage session init skipped.');
     }
-  }
-
-  async _notifySW(type, payload) {
-    try {
-      const sw = await navigator.serviceWorker.ready;
-      sw.active.postMessage({ type, payload });
-    } catch (_) { /* SW not available */ }
   }
 
   _startTickle() {

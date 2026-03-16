@@ -583,18 +583,18 @@ const auth = new AuthController({
 
 /* ── Boot sequence ──────────────────────────────────────────────────────── */
 async function boot() {
-  splashStatus.textContent = 'Connecting…';
+  splashStatus.textContent = 'Loading CheerpJ JVM…';
   /* Request persistent storage early — iOS 15.4+ honours this when installed */
   Vault.requestPersistence().catch(() => {});
 
   /* Short pause so the splash renders before async work */
   await new Promise((r) => setTimeout(r, 200));
 
-  /* Boot: fast ping first, CheerpJ in background if gateway not found */
+  /* Boot: load CheerpJ JVM → BrowserGateway bridge (no localhost needed) */
   try {
     await auth.gateway.boot();
   } catch (_) {
-    log('[Boot] Gateway boot error.');
+    log('[Boot] CheerpJ gateway boot error — will retry.');
   }
 
   /* Attempt Face ID auto-login */
@@ -612,6 +612,7 @@ async function boot() {
     gwStatus.status === 'ready' || gwStatus.status === 'authenticated' ? 'ok'
     : gwStatus.status === 'booting' ? 'booting'
     : gwStatus.status === 'error' ? 'fail'
+    : gwStatus.status === 'awaiting_gateway' ? 'booting'
     : 'waiting'
   );
 
@@ -646,16 +647,16 @@ function setGatewayDot(state) {
   const label = $('auth-gateway-label');
   const info = $('auth-gateway-info');
   dot.className = 'auth-gateway-dot' + (state === 'ok' ? ' ok' : state === 'fail' || state === 'waiting' ? ' fail' : '');
-  label.textContent = state === 'ok' ? 'Gateway connected'
-    : state === 'fail' ? 'Gateway unavailable'
-    : state === 'booting' ? 'Starting JVM…'
-    : state === 'waiting' ? 'Waiting for gateway'
+  label.textContent = state === 'ok' ? 'Gateway ready'
+    : state === 'fail' ? 'Gateway error'
+    : state === 'booting' ? 'Loading JVM…'
+    : state === 'waiting' ? 'Initializing…'
     : 'Gateway';
   if (info) {
-    info.textContent = state === 'ok' ? 'Connected — ready to sign in.'
-      : state === 'fail' ? 'Could not reach gateway. Ensure it is running.'
-      : state === 'booting' ? 'Loading CheerpJ runtime…'
-      : state === 'waiting' ? 'Run the IBKR Client Portal Gateway, then sign in.'
+    info.textContent = state === 'ok' ? 'Browser-native mode — ready to sign in.'
+      : state === 'fail' ? 'CheerpJ JVM failed to load. Check browser console.'
+      : state === 'booting' ? 'CheerpJ is loading the IBKR gateway into the browser…'
+      : state === 'waiting' ? 'Starting browser-native gateway…'
       : 'Checking gateway…';
   }
 }
@@ -777,14 +778,17 @@ async function loadTicker(ticker) {
 /* ── Account / positions ────────────────────────────────────────────────── */
 async function loadAccount() {
   try {
-    const resp = await fetch('/v1/api/portfolio/accounts', { credentials: 'include' });
-    if (!resp.ok) return;
-    const accounts = await resp.json();
+    let accounts;
+    // Route through CheerpJ bridge (browser-native mode)
+    const result = await auth.gateway.proxyRequest('GET', '/v1/api/portfolio/accounts');
+    if (result.status >= 200 && result.status < 300) {
+      accounts = JSON.parse(result.body);
+    }
     const first = accounts?.[0];
     if (first) {
       const accountId = first.id || first.accountId;
       $('order-account-label').textContent = accountId;
-      tradesInstance = new Trades({ accountId });
+      tradesInstance = new Trades({ accountId, gateway: auth.gateway });
       loadPositions();
     }
   } catch (_) {}

@@ -16,10 +16,11 @@ const ORDER_HISTORY_KEY = 'order_history';
 const MAX_HISTORY = 200;
 
 export class Trades {
-  constructor({ accountId, onLog } = {}) {
+  constructor({ accountId, onLog, gateway } = {}) {
     this._accountId = accountId;
     this._onLog = onLog || console.log;
     this._vault = new Vault('sfti.ios.trades');
+    this._gateway = gateway || null; // GatewayManager for CheerpJ bridge mode
   }
 
   /**
@@ -114,6 +115,17 @@ export class Trades {
   }
 
   async _api(path, method = 'GET', body) {
+    // Browser-native mode: route through CheerpJ Java bridge
+    if (this._gateway) {
+      const result = await this._gateway.proxyRequest(
+        method, path, body ? JSON.stringify(body) : null
+      );
+      if (result.status && result.status >= 200 && result.status < 300) {
+        return JSON.parse(result.body);
+      }
+      throw new Error(`IBKR API error ${result.status}: ${result.body || result.error}`);
+    }
+    // Fallback: direct fetch (for local gateway mode)
     const init = {
       method,
       credentials: 'include',

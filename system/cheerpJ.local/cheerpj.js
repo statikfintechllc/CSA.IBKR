@@ -1,20 +1,25 @@
 /**
- * cheerpj.js — CheerpJ Integration Layer
+ * cheerpj.js — CheerpJ 3.0 Browser-Native IBKR Gateway Bridge
  *
- * Uses the real CheerpJ 3.0 runtime (from Leaning Technologies CDN) to attempt
- * running the IBKR Client Portal Gateway's Java code in-browser via WebAssembly.
+ * Runs the IBKR Client Portal Gateway entirely in the browser using
+ * CheerpJ 3.0 (Leaning Technologies' Java-to-WebAssembly JVM).
  *
- * KNOWN LIMITATION (browser sandbox):
- *   CheerpJ 3.0 does NOT support Java ServerSocket / Netty server bindings.
- *   The IBKR gateway (Vert.x / Netty) requires a TCP listener on port 5000,
- *   which browsers cannot create.  The JVM will start but the HTTP server
- *   will fail to bind.  This module is kept for forward-compatibility.
+ * Previous versions tried to run the stock Vert.x/Netty gateway via
+ * cheerpjRunMain(), which always failed because browsers cannot create
+ * TCP ServerSocket bindings.  This upgraded version uses a purpose-built
+ * Java class (BrowserGateway.java) that:
+ *
+ *   • Uses java.net.HttpURLConnection — which CheerpJ transparently maps
+ *     to the browser's fetch() API (no TCP sockets, no Netty)
+ *   • Manages IBKR session cookies in-process
+ *   • Exposes static methods callable from JavaScript via cheerpjRunLibrary()
  *
  * Architecture:
- *   1. CheerpJ 3.0 loaded DYNAMICALLY (not in <head>) to avoid blocking page load
- *   2. cheerpjInit() boots the WebAssembly JVM environment
- *   3. cheerpjRunMain() launches the gateway's main class with full classpath
- *   4. JARs served by GitHub Pages, pre-cached in OPFS vault for offline use
+ *   1. CheerpJ 3.0 loaded dynamically from CDN
+ *   2. cheerpjInit() boots the WebAssembly JVM
+ *   3. cheerpjRunLibrary() loads all gateway JARs + BrowserGateway as a library
+ *   4. JavaScript calls BrowserGateway.proxy() / .authStatus() / .tickle()
+ *      through CheerpJ's Java-JS interop — no localhost, no server socket
  */
 
 import { Vault } from '../SFTi.IOS/storage/vault.js';
@@ -22,13 +27,17 @@ import { Vault } from '../SFTi.IOS/storage/vault.js';
 // ─── Paths (relative to repo root) ──────────────────────────────────────────
 const GW_ROOT      = 'system/IBKR.CSA/clientportal.gw';
 const GATEWAY_JAR  = `${GW_ROOT}/dist/ibgroup.web.core.iblink.router.clientportal.gw.jar`;
+const BROWSER_JAR  = `${GW_ROOT}/build/lib/runtime/browser-gateway.jar`;
 const CONF_YAML    = `${GW_ROOT}/root/conf.yaml`;
 
-const MAIN_CLASS   = 'ibgroup.web.core.clientportal.gw.GatewayStart';
+const BRIDGE_CLASS = 'ibgroup.web.core.clientportal.gw.browser.BrowserGateway';
 const CHEERPJ_CDN  = 'https://cjrtnc.leaningtech.com/3.0/cj3loader.js';
 
-// All runtime JARs (exact filenames from build/lib/runtime/)
+// Runtime JARs — the browser-gateway JAR replaces the need for Vert.x/Netty
+// as the actual HTTP transport, but we still include them for any gateway
+// classes that reference Vert.x types during class loading.
 const RUNTIME_JARS = [
+  'browser-gateway.jar',
   'vertx-core-3.5.0.jar',
   'vertx-web-3.5.0.jar',
   'netty-buffer-4.1.15.Final.jar',
@@ -70,7 +79,7 @@ function vaultKey(repoPath) {
 export class CheerpJLocal {
   /**
    * @param {object} opts
-   * @param {function} [opts.onReady]  Called when gateway JVM is running
+   * @param {function} [opts.onReady]  Called when the Java bridge is live
    * @param {function} [opts.onError]  Called on fatal error
    * @param {function} [opts.onLog]    Called for status / log messages
    */
@@ -79,12 +88,15 @@ export class CheerpJLocal {
     this.onError = opts.onError || console.error;
     this.onLog   = opts.onLog   || console.log;
     this._state  = 'idle'; // idle | loading | prefetching | booting | running | stopped | error
-    this._jvmPromise = null;
+    this._bridge = null;   // Java BrowserGateway class (static methods)
+    this._lib    = null;   // cheerpjRunLibrary handle
   }
+
+  /** @returns {object|null} The Java BrowserGateway class for direct calls */
+  get bridge() { return this._bridge; }
 
   /**
    * Dynamically load the CheerpJ 3.0 runtime from CDN.
-   * Avoids blocking the initial page render with a synchronous <script>.
    */
   async _loadScript() {
     if (typeof globalThis.cheerpjInit === 'function') return;
@@ -109,7 +121,7 @@ export class CheerpJLocal {
     this._state = 'prefetching';
     this.onLog('[CheerpJ] Caching gateway assets…');
 
-    const allPaths = [GATEWAY_JAR, ...RUNTIME_JARS];
+    const allPaths = [GATEWAY_JAR, BROWSER_JAR, ...RUNTIME_JARS];
     let cached = 0, fetched = 0;
     const failed = [];
 
@@ -137,14 +149,15 @@ export class CheerpJLocal {
   }
 
   /**
-   * Boot the JVM and launch the IBKR Client Portal Gateway.
+   * Boot the JVM and load the IBKR gateway as a library (no server socket).
    *
-   * NOTE: CheerpJ 3.0 does not support ServerSocket, so the Vert.x/Netty
-   * gateway will likely fail to bind to port 5000.  This is a best-effort
-   * attempt kept for forward compatibility.
+   * Uses cheerpjRunLibrary() to load all JARs, then resolves the
+   * BrowserGateway class whose static methods proxy HTTP requests to
+   * IBKR's API using java.net.HttpURLConnection (mapped to fetch by CheerpJ).
    */
   async boot() {
-    if (this._state !== 'idle' && this._state !== 'prefetching' && this._state !== 'loading') return;
+    if (this._state === 'running') return;
+    if (this._state !== 'idle' && this._state !== 'prefetching' && this._state !== 'loading' && this._state !== 'error') return;
 
     try { await this._loadScript(); } catch (err) {
       this._state = 'error'; this.onError(err); throw err;
@@ -162,23 +175,28 @@ export class CheerpJLocal {
       const appBase  = '/app' + basePath;
       const rootDir  = appBase + GW_ROOT + '/root';
       const mainJar  = appBase + GATEWAY_JAR;
+      const browserJar = appBase + BROWSER_JAR;
       const rtJars   = RUNTIME_JARS.map(j => appBase + j);
-      const classpath = [rootDir, mainJar, ...rtJars].join(':');
-      const confArg = appBase + CONF_YAML;
+      const classpath = [rootDir, browserJar, mainJar, ...rtJars].join(':');
 
-      this.onLog('[CheerpJ] Starting gateway (server socket may fail in browser)…');
+      this.onLog('[CheerpJ] Loading gateway library (browser-native mode)…');
 
-      this._jvmPromise = cheerpjRunMain(
-        MAIN_CLASS, classpath, '--conf', confArg
+      // Library mode: load all JARs but do NOT run a main() method.
+      // This avoids the Vert.x/Netty server socket bind that always fails.
+      this._lib = await cheerpjRunLibrary(classpath);
+
+      // Resolve the BrowserGateway class for Java-JS interop
+      this._bridge = await this._lib[BRIDGE_CLASS];
+
+      // Initialize with IBKR API endpoints from conf.yaml
+      await this._bridge.init(
+        'https://api.ibkr.com',
+        'https://gdcdyn.interactivebrokers.com',
+        'v1'
       );
 
-      const result = await Promise.race([
-        this._jvmPromise.then(() => 'exited'),
-        this._sleep(15000).then(() => 'timeout'),
-      ]);
-
       this._state = 'running';
-      this.onLog('[CheerpJ] JVM active (' + result + ').');
+      this.onLog('[CheerpJ] Browser gateway bridge is live — no localhost required.');
       this.onReady();
     } catch (err) {
       this._state = 'error';
@@ -188,8 +206,62 @@ export class CheerpJLocal {
     }
   }
 
+  // ─── Bridge convenience methods ─────────────────────────────────────────
+
+  /**
+   * Proxy an HTTP request through the Java bridge to IBKR's API.
+   * @param {string} method  HTTP method
+   * @param {string} path    API path (e.g. /v1/api/iserver/auth/status)
+   * @param {string|null} body  JSON body or null
+   * @returns {Promise<{status:number, headers:object, body:string, error?:string}>}
+   */
+  async proxyRequest(method, path, body = null) {
+    if (!this._bridge) throw new Error('Gateway bridge not initialized');
+    const raw = await this._bridge.proxy(method, path, body);
+    try { return JSON.parse(raw); } catch (_) { return { status: 0, error: raw }; }
+  }
+
+  /** Check IBKR auth status via the Java bridge. */
+  async authStatus() {
+    if (!this._bridge) return { status: 0, error: 'Bridge not ready' };
+    const raw = await this._bridge.authStatus();
+    try { return JSON.parse(raw); } catch (_) { return { status: 0, error: raw }; }
+  }
+
+  /** Send keep-alive tickle via the Java bridge. */
+  async tickle() {
+    if (!this._bridge) return { status: 0, error: 'Bridge not ready' };
+    const raw = await this._bridge.tickle();
+    try { return JSON.parse(raw); } catch (_) { return { status: 0, error: raw }; }
+  }
+
+  /** Initiate DH brokerage session via the Java bridge. */
+  async ssoDHInit() {
+    if (!this._bridge) return { status: 0, error: 'Bridge not ready' };
+    const raw = await this._bridge.ssoDHInit();
+    try { return JSON.parse(raw); } catch (_) { return { status: 0, error: raw }; }
+  }
+
+  /** Get the SSO login URL for the popup window. */
+  async ssoLoginUrl() {
+    if (!this._bridge) return 'https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=22&RL=1&ip2loc=US';
+    return await this._bridge.ssoLoginUrl();
+  }
+
+  /** Logout and clear cookies. */
+  async doLogout() {
+    if (!this._bridge) return { status: 0, error: 'Bridge not ready' };
+    const raw = await this._bridge.logout();
+    try { return JSON.parse(raw); } catch (_) { return { status: 0, error: raw }; }
+  }
+
   async stop() {
     this._state = 'stopped';
+    if (this._bridge) {
+      try { await this._bridge.clearCookies(); } catch (_) {}
+    }
+    this._bridge = null;
+    this._lib = null;
     this.onLog('[CheerpJ] Stopped.');
   }
 
