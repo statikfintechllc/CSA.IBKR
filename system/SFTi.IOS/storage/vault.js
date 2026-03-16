@@ -127,20 +127,22 @@ export class Vault {
   }
 
   // ─── OPFS helpers (large blobs) ──────────────────────────────────────────────
+  // OPFS (Origin Private File System) is available on iOS 17+ when installed
+  // to the Home Screen.  It provides high-performance file I/O ideal for
+  // caching large binaries (JARs, WASM modules) that the CheerpJ JVM needs.
 
   /**
    * Write a large binary blob to OPFS.
-   * Available on iOS 17+ when added to Home Screen.
    *
    * @param {string} filename
-   * @param {Uint8Array} data
+   * @param {Uint8Array | ArrayBuffer} data
    */
   static async writeFile(filename, data) {
     if (!navigator.storage || !navigator.storage.getDirectory) return;
     const root = await navigator.storage.getDirectory();
     const handle = await root.getFileHandle(filename, { create: true });
     const writable = await handle.createWritable();
-    await writable.write(data);
+    await writable.write(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
     await writable.close();
   }
 
@@ -156,6 +158,110 @@ export class Vault {
       const handle = await root.getFileHandle(filename);
       const file = await handle.getFile();
       return new Uint8Array(await file.arrayBuffer());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Read a text file from OPFS (e.g. conf.yaml).
+   * @param {string} filename
+   * @returns {Promise<string | null>}
+   */
+  static async readTextFile(filename) {
+    try {
+      if (!navigator.storage || !navigator.storage.getDirectory) return null;
+      const root = await navigator.storage.getDirectory();
+      const handle = await root.getFileHandle(filename);
+      const file = await handle.getFile();
+      return await file.text();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Check whether a file exists in OPFS without reading it.
+   * @param {string} filename
+   * @returns {Promise<boolean>}
+   */
+  static async hasFile(filename) {
+    try {
+      if (!navigator.storage || !navigator.storage.getDirectory) return false;
+      const root = await navigator.storage.getDirectory();
+      await root.getFileHandle(filename); // throws if missing
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Delete a file from OPFS.
+   * @param {string} filename
+   */
+  static async deleteFile(filename) {
+    try {
+      if (!navigator.storage || !navigator.storage.getDirectory) return;
+      const root = await navigator.storage.getDirectory();
+      await root.removeEntry(filename);
+    } catch (_) { /* file doesn't exist — fine */ }
+  }
+
+  /**
+   * Fetch a remote URL and cache the response in OPFS.
+   * Returns the bytes regardless of whether they came from cache or network.
+   *
+   * @param {string}  url         Remote URL to fetch (e.g. GitHub Pages asset)
+   * @param {string}  cacheKey    OPFS filename to cache under
+   * @param {object}  [opts]
+   * @param {boolean} [opts.force]  Re-fetch even if cached
+   * @returns {Promise<Uint8Array | null>}
+   */
+  static async fetchAndCache(url, cacheKey, opts = {}) {
+    // 1. Try OPFS cache
+    if (!opts.force) {
+      const cached = await Vault.readFile(cacheKey);
+      if (cached && cached.byteLength > 0) return cached;
+    }
+
+    // 2. Fetch from network
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const bytes = new Uint8Array(await resp.arrayBuffer());
+
+      // 3. Write to OPFS
+      try { await Vault.writeFile(cacheKey, bytes); } catch (_) {}
+
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch a remote text file and cache it in OPFS.
+   *
+   * @param {string}  url
+   * @param {string}  cacheKey
+   * @param {object}  [opts]
+   * @param {boolean} [opts.force]
+   * @returns {Promise<string | null>}
+   */
+  static async fetchAndCacheText(url, cacheKey, opts = {}) {
+    if (!opts.force) {
+      const cached = await Vault.readTextFile(cacheKey);
+      if (cached && cached.length > 0) return cached;
+    }
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const text = await resp.text();
+      const bytes = new TextEncoder().encode(text);
+      try { await Vault.writeFile(cacheKey, bytes); } catch (_) {}
+      return text;
     } catch (_) {
       return null;
     }

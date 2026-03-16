@@ -1,0 +1,97 @@
+# _config.yml — GitHub Pages / Jekyll configuration for CSA.IBKR
+#
+# GitHub Pages runs Jekyll by default.  This config ensures that ALL
+# PWA assets — including Java JARs, WebAssembly modules, keystores,
+# YAML configs, and binary files — are included in the built site
+# and served with correct MIME types.
+#
+# The .nojekyll file is also present as a belt-and-suspenders measure;
+# if GitHub Pages honours it, Jekyll processing is skipped entirely
+# and files are served as-is.  If it doesn't (e.g. on some Enterprise
+# Pages setups), this _config.yml ensures correct behaviour.
+
+# ── Site metadata ────────────────────────────────────────────────────────────
+title: CSA.IBKR
+description: >-
+  SFTi IBKR Client Portal — self-contained in-browser trading terminal.
+  Boots the IBKR Client Portal Gateway via CheerpJ WebAssembly JVM,
+  no external server required.
+baseurl: ""          # set to "/CSA.IBKR" if hosted at user.github.io/CSA.IBKR
+url: ""
+
+# ── Build settings ───────────────────────────────────────────────────────────
+# No theme, no plugins — this is a static PWA, not a blog.
+theme: null
+plugins: []
+
+# Disable Liquid/Markdown processing for all files except index.html.
+# This prevents Jekyll from trying to interpret {{ }} in JS files or
+# corrupting binary files by running them through the Liquid engine.
+strict_front_matter: false
+liquid:
+  error_mode: warn
+
+# ── Include / Exclude ────────────────────────────────────────────────────────
+# Jekyll excludes dotfiles, _-prefixed dirs, and certain extensions by
+# default.  Override with explicit lists so every PWA asset is served.
+include:
+  - .nojekyll
+  - _config.yml
+  - sw.js
+  - manifest.json
+  - index.html
+  - README.md
+  - system
+
+# Exclude build/dev artifacts
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - "*.log"
+  - .git
+  - .github
+
+# ── Static file handling ─────────────────────────────────────────────────────
+# keep_files prevents Jekyll from cleaning these directories out of _site.
+# Critical for JARs, WASM, keystores, and other binary assets that the
+# PWA needs to fetch at runtime and cache in the client-side vault.
+keep_files:
+  - system/IBKR.CSA/clientportal.gw/dist
+  - system/IBKR.CSA/clientportal.gw/build
+  - system/IBKR.CSA/clientportal.gw/root
+  - system/cheerpJ.local/jvm
+  - system/configs/assets
+
+# ── Defaults ─────────────────────────────────────────────────────────────────
+# Mark all files under system/ as static (no layout, no Liquid processing).
+# This is the key setting that stops Jekyll from mangling JARs, WASM, and
+# other binaries.  Without this, Jekyll only copies files that either have
+# YAML front matter or match known static extensions.
+defaults:
+  - scope:
+      path: "system"
+    values:
+      layout: null
+  - scope:
+      path: "system/IBKR.CSA"
+    values:
+      layout: null
+  - scope:
+      path: "system/cheerpJ.local"
+    values:
+      layout: null
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: null
+
+# Disable automatic excerpts and reading time — not a blog.
+show_excerpts: false
+
+# ── Sass / CSS ───────────────────────────────────────────────────────────────
+# No Sass preprocessing — all CSS is plain.
+sass:
+  style: compressed

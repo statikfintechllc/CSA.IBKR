@@ -12,18 +12,24 @@
  *   The Service Worker (sw.js) intercepts requests to /v1/api/* and
  *   attaches the session bearer token.  The bridge therefore only needs
  *   to issue plain fetch() calls — auth injection is handled upstream.
+ *
+ * Configurable gateway URL:
+ *   The bridge rewrites localhost:5000 (or any configured gateway port)
+ *   calls to the SW-proxied path so the in-browser JVM and external
+ *   gateway use the same request pipeline.
  */
 
-const IBKR_BASE = 'https://api.ibkr.com';
 const LOCAL_GW = '/v1/api'; // SW-proxied path
 
 export class NetworkBridge {
   /**
    * @param {object} opts
    * @param {function} opts.onLog
+   * @param {string}   [opts.gatewayUrl]  Gateway URL (default: https://localhost:5000)
    */
-  constructor({ onLog }) {
+  constructor({ onLog, gatewayUrl }) {
     this._onLog = onLog;
+    this._gatewayUrl = (gatewayUrl || 'https://localhost:5000').replace(/\/+$/, '');
     this._pendingCallbacks = new Map(); // cbId → { resolve, reject }
     this._cbCounter = 0;
   }
@@ -31,6 +37,14 @@ export class NetworkBridge {
   /** Set up the message channel with the Service Worker for token injection. */
   async init() {
     this._onLog('[Network] Bridge initialised (fetch → IBKR REST).');
+  }
+
+  /**
+   * Update the gateway URL at runtime (e.g. when user changes the setting).
+   * @param {string} url
+   */
+  setGatewayUrl(url) {
+    this._gatewayUrl = url.replace(/\/+$/, '');
   }
 
   /**
@@ -43,7 +57,7 @@ export class NetworkBridge {
    * @returns {Promise<{status: number, headers: object, body: string}>}
    */
   async proxyRequest({ url, method, body }) {
-    // Rewrite localhost:5000 gateway calls to the SW-proxied path
+    // Rewrite gateway self-calls to the SW-proxied path
     const target = this._rewriteUrl(url);
 
     const headers = {
@@ -100,6 +114,18 @@ export class NetworkBridge {
 
   _rewriteUrl(url) {
     // Gateway self-calls (e.g. http://localhost:5000/v1/api/…) → SW proxy path
+    // Match both the default localhost:5000 and any configured gateway URL.
+    try {
+      const parsed = new URL(url);
+      const gwParsed = new URL(this._gatewayUrl);
+      if (
+        parsed.hostname === gwParsed.hostname &&
+        parsed.port === gwParsed.port
+      ) {
+        return parsed.pathname + parsed.search;
+      }
+    } catch (_) { /* not a valid URL — try string matching */ }
+
     if (url.includes('localhost:5000')) {
       return url.replace(/https?:\/\/localhost:5000/, '');
     }

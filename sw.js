@@ -14,7 +14,7 @@
  *   are always allowed through — they don't require a pre-existing session.
  */
 
-const SW_VERSION = '1.2.0';
+const SW_VERSION = '1.3.0';
 const CACHE_NAME = `csa-ibkr-v${SW_VERSION}`;
 
 // Session duration — IBKR requires re-auth at least once per day

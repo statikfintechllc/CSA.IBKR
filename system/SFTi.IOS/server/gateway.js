@@ -3,7 +3,8 @@
  *
  * Manages the full lifecycle of the IBKR Client Portal Gateway:
  *
- *   boot()                   → start the in-browser JVM + gateway JAR
+ *   boot()                   → start the in-browser JVM + gateway JAR,
+ *                              or verify an external gateway is reachable
  *   authenticate()           → open the gateway's own login page (which
  *                              redirects to IBKR SSO), then poll for session
  *   loginWithCredentials()   → store creds via Face ID, then authenticate
@@ -37,6 +38,7 @@ const GATEWAY_URL_KEY = 'gw_base_url';
 const TICKLE_INTERVAL_MS = 55_000;
 const SSO_POLL_INTERVAL_MS = 2000;
 const SSO_TIMEOUT_MS = 300_000; // 5 minutes
+const PING_TIMEOUT_MS = 6000;   // gateway reachability check
 
 // Default gateway base URL — the standard CP Gateway port
 const DEFAULT_GATEWAY_URL = 'https://localhost:5000';
@@ -52,7 +54,7 @@ export class GatewayManager {
     this._vault = new Vault('sfti.ios.server');
     this._gateway = null;
     this._tickleTimer = null;
-    this._status = 'idle'; // idle | booting | ready | authenticated | error
+    this._status = 'idle'; // idle | booting | ready | awaiting_gateway | authenticated | error
     this._gatewayBaseUrl = DEFAULT_GATEWAY_URL;
   }
 
@@ -71,7 +73,7 @@ export class GatewayManager {
     this._onLog(`[Gateway] Base URL set to ${this._gatewayBaseUrl}`);
   }
 
-  /** Start the in-browser JVM gateway (CheerpJ). */
+  /** Start the in-browser JVM gateway (CheerpJ), then verify reachability. */
   async boot() {
     if (this._status !== 'idle') return;
     this._setStatus('booting');
@@ -85,20 +87,36 @@ export class GatewayManager {
         onLog: (msg) => this._onLog(msg),
         onError: (msg) => this._onError(msg),
         onReady: () => {
-          this._setStatus('ready');
           this._onLog('[Gateway] In-browser gateway ready.');
         },
       });
+
+      // boot() now prefetches all JARs/WASM from the repo into the
+      // client-side vault (OPFS), then attempts to start the JVM.
       await this._gateway.boot();
     } catch (err) {
-      // CheerpJ / WASM boot failed — this is expected until the real
-      // WASM JVM is implemented.  Fall back to external gateway mode.
-      this._setStatus('ready');
+      // CheerpJ / WASM boot failed — expected until the real WASM JVM ships.
+      // Assets are still cached in the vault for future use.
       this._onLog('[Gateway] In-browser JVM unavailable — using external gateway.');
     }
 
     // Notify SW of the gateway URL for API proxying
     await this._notifySW('SET_GATEWAY_URL', { url: this._gatewayBaseUrl });
+
+    // Check if the gateway is actually reachable
+    const reachable = await this._pingGateway();
+    if (reachable) {
+      this._setStatus('ready');
+      this._onLog('[Gateway] External gateway reachable at ' + this._gatewayBaseUrl);
+    } else {
+      this._setStatus('awaiting_gateway');
+      this._onLog(
+        '[Gateway] ⚠ Gateway not reachable at ' + this._gatewayBaseUrl + '. ' +
+        'Start the IBKR Client Portal Gateway first:\n' +
+        '  cd system/IBKR.CSA/clientportal.gw && bin/run.sh root/conf.yaml\n' +
+        'Then accept the self-signed certificate at ' + this._gatewayBaseUrl
+      );
+    }
   }
 
   /**
@@ -119,6 +137,22 @@ export class GatewayManager {
    */
   async authenticate() {
     if (this._status === 'idle') await this.boot();
+
+    // Pre-flight: verify the gateway is reachable before opening a popup
+    const reachable = await this._pingGateway();
+    if (!reachable) {
+      this._onLog(
+        '[Gateway] ✗ Cannot reach the gateway at ' + this._gatewayBaseUrl + '.\n' +
+        'Troubleshooting:\n' +
+        '  1. Start the gateway: cd system/IBKR.CSA/clientportal.gw && bin/run.sh root/conf.yaml\n' +
+        '  2. Visit ' + this._gatewayBaseUrl + ' in your browser and accept the SSL certificate\n' +
+        '  3. Check that the URL in Gateway Settings matches your gateway'
+      );
+      throw new Error(
+        'Gateway not reachable at ' + this._gatewayBaseUrl + '. ' +
+        'Start the IBKR Client Portal Gateway and accept the SSL certificate first.'
+      );
+    }
 
     this._onLog('[Gateway] Opening Client Portal Gateway login…');
     this._onLog('[Gateway] Complete sign-in (including 2FA) on the login page.');
@@ -250,6 +284,40 @@ export class GatewayManager {
   }
 
   // ─── Private ────────────────────────────────────────────────────────────────
+
+  /**
+   * Ping the gateway to verify it is reachable.
+   *
+   * Attempts a simple fetch to the gateway root.  Because the gateway
+   * uses a self-signed SSL certificate, the browser may block the request
+   * unless the user has previously visited the gateway URL and accepted
+   * the certificate warning.
+   *
+   * We accept any HTTP status as "reachable" — even 401/403 means the
+   * server is up.  Only network errors (connection refused, cert blocked)
+   * count as unreachable.
+   *
+   * @returns {Promise<boolean>}
+   */
+  async _pingGateway() {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
+    try {
+      const resp = await fetch(this._gatewayBaseUrl, {
+        method: 'GET',
+        mode: 'no-cors',        // avoid CORS preflight for the ping
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      // mode: 'no-cors' yields an opaque response (status 0, type 'opaque')
+      // which still means the server responded — it's reachable.
+      return true;
+    } catch (_) {
+      clearTimeout(timer);
+      return false;
+    }
+  }
 
   /**
    * Check if the gateway has an authenticated session.

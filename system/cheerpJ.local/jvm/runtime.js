@@ -14,9 +14,17 @@
  *   Java bytecode interpreter written in C.  When WASM is unavailable
  *   (e.g. restricted CSP), falls back to a pure-JS bytecode interpreter
  *   that covers the subset of bytecodes used by the IBKR gateway.
+ *
+ * Vault integration:
+ *   The WASM module is fetched from the repo on first load and cached
+ *   in the Origin Private File System (OPFS) via Vault.  Subsequent
+ *   boots load from OPFS — no network required.
  */
 
+import Vault from '../../SFTi.IOS/storage/vault.js';
+
 const WASM_MODULE_PATH = 'system/cheerpJ.local/jvm/jvm.wasm';
+const WASM_CACHE_KEY = 'jvm__jvm.wasm';
 
 export class JVMRuntime {
   /**
@@ -37,29 +45,67 @@ export class JVMRuntime {
     this._ready = false;
   }
 
-  /** Initialise the WASM module (or fall back to JS interpreter). */
+  /**
+   * Initialise the WASM module (or fall back to JS interpreter).
+   *
+   * Resolution order:
+   *   1. OPFS cache (Vault.readFile) — instant, works offline
+   *   2. Network fetch (GitHub Pages URL) — first load only
+   *   3. On successful fetch → write to OPFS for next time
+   */
   async init() {
     this._onLog('[JVM] Initialising runtime…');
 
-    // Try WASM first
-    try {
-      const resp = await fetch(WASM_MODULE_PATH);
-      if (resp.ok) {
-        const bytes = await resp.arrayBuffer();
+    // Try WASM from vault, then network, then JS fallback
+    const wasmBytes = await this._loadWasm();
+
+    if (wasmBytes) {
+      try {
         const imports = this._buildWasmImports();
-        const result = await WebAssembly.instantiate(bytes, imports);
+        const result = await WebAssembly.instantiate(wasmBytes, imports);
         this._wasm = result.instance;
         this._exports = result.instance.exports;
         this._onLog('[JVM] WASM module loaded.');
         return;
+      } catch (err) {
+        this._onLog('[JVM] WASM instantiation failed: ' + err.message);
       }
-    } catch (_) {
-      // WASM unavailable — use JS interpreter
     }
 
     this._onLog('[JVM] WASM unavailable, falling back to JS bytecode interpreter.');
     this._exports = this._buildJSInterpreter();
     this._ready = true;
+  }
+
+  /**
+   * Load jvm.wasm from vault cache (OPFS) or network.
+   * @returns {Promise<ArrayBuffer | null>}
+   */
+  async _loadWasm() {
+    // 1. Try vault cache
+    try {
+      const cached = await Vault.readFile(WASM_CACHE_KEY);
+      if (cached && cached.byteLength > 0) {
+        this._onLog('[JVM] jvm.wasm loaded from vault cache.');
+        return cached.buffer;
+      }
+    } catch (_) { /* OPFS unavailable */ }
+
+    // 2. Fetch from network (repo / GitHub Pages)
+    try {
+      const resp = await fetch(WASM_MODULE_PATH);
+      if (resp.ok) {
+        const bytes = await resp.arrayBuffer();
+        // 3. Cache in vault for next time
+        try {
+          await Vault.writeFile(WASM_CACHE_KEY, new Uint8Array(bytes));
+          this._onLog('[JVM] jvm.wasm cached in vault.');
+        } catch (_) { /* non-fatal */ }
+        return bytes;
+      }
+    } catch (_) { /* network unavailable */ }
+
+    return null;
   }
 
   /**

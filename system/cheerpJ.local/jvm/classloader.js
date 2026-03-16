@@ -5,9 +5,19 @@
  * parses the class file format, and registers each class with the JVM runtime.
  *
  * JAR loading pipeline:
- *   fetch(jarUrl) → ArrayBuffer → unzip (ZIP parser) → .class entries
+ *   OPFS cache check → (miss) fetch(jarUrl) → OPFS write →
+ *   ArrayBuffer → unzip (ZIP parser) → .class entries
  *   → parse ClassFile structure → runtime.registerClass(name, cls)
+ *
+ * Vault caching:
+ *   JARs are large binaries (the gateway + ~14 runtime JARs).  On first
+ *   load they are fetched from the GitHub Pages–hosted repo and written
+ *   to the Origin Private File System (OPFS) via Vault.writeFile().
+ *   Subsequent loads read directly from OPFS — no network required.
+ *   This lets the Java gateway live entirely client-side in the vault.
  */
+
+import Vault from '../../SFTi.IOS/storage/vault.js';
 
 export class ClassLoader {
   /**
@@ -34,21 +44,46 @@ export class ClassLoader {
   }
 
   /**
-   * Fetch a single JAR, unzip it, and register all classes.
+   * Load a single JAR, unzip it, and register all classes.
+   *
+   * Resolution order:
+   *   1. OPFS cache (Vault.readFile) — instant, works offline
+   *   2. Network fetch (GitHub Pages URL) — first load only
+   *   3. On successful fetch → write to OPFS for next time
+   *
    * @param {string} jarPath
    */
   async loadJar(jarPath) {
     if (this._loaded.has(jarPath)) return;
     this._loaded.add(jarPath);
 
+    const cacheKey = this._opfsKey(jarPath);
     let bytes;
+
+    // 1. Try OPFS vault cache
     try {
-      const resp = await fetch(jarPath);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      bytes = new Uint8Array(await resp.arrayBuffer());
-    } catch (err) {
-      this._onLog(`[ClassLoader] Could not fetch ${jarPath}: ${err.message}`);
-      return;
+      const cached = await Vault.readFile(cacheKey);
+      if (cached && cached.byteLength > 0) {
+        bytes = cached;
+        this._onLog(`[ClassLoader] ${jarPath.split('/').pop()}: loaded from vault cache.`);
+      }
+    } catch (_) { /* OPFS unavailable or file missing */ }
+
+    // 2. Fall back to network fetch
+    if (!bytes) {
+      try {
+        const resp = await fetch(jarPath);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        bytes = new Uint8Array(await resp.arrayBuffer());
+
+        // 3. Cache in OPFS for next time
+        try {
+          await Vault.writeFile(cacheKey, bytes);
+        } catch (_) { /* OPFS write failed — non-fatal */ }
+      } catch (err) {
+        this._onLog(`[ClassLoader] Could not fetch ${jarPath}: ${err.message}`);
+        return;
+      }
     }
 
     const entries = await this._unzip(bytes);
@@ -66,6 +101,17 @@ export class ClassLoader {
       }
     }
     this._onLog(`[ClassLoader] ${jarPath.split('/').pop()}: ${count} classes registered.`);
+  }
+
+  /**
+   * Derive an OPFS-safe filename from a JAR path.
+   * e.g. "system/IBKR.CSA/.../vertx-core-3.5.0.jar" → "jar__vertx-core-3.5.0.jar"
+   * @param {string} jarPath
+   * @returns {string}
+   */
+  _opfsKey(jarPath) {
+    const filename = jarPath.split('/').pop();
+    return `jar__${filename}`;
   }
 
   // ─── ZIP parser ─────────────────────────────────────────────────────────────

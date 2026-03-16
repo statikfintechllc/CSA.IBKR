@@ -404,20 +404,35 @@
       Sign in with Face ID
     </button>
 
-    <!-- Gateway URL config (for users running the Java gateway on their network) -->
-    <details class="auth-advanced" id="auth-advanced">
-      <summary>Gateway Settings</summary>
-      <div class="auth-field" style="margin-top:0.5rem;">
+    <!-- Gateway connection panel ──────────────────────────────────────── -->
+    <div class="auth-gateway-panel" id="auth-gateway-panel">
+      <div class="auth-gateway-heading">
+        <span class="auth-gateway-dot" id="auth-gateway-dot"></span>
+        <span id="auth-gateway-label">Gateway</span>
+      </div>
+
+      <div class="auth-field" style="margin-top:0.4rem;">
         <label for="auth-gateway-url">Gateway URL</label>
         <input type="url" id="auth-gateway-url"
           autocomplete="url" autocapitalize="none" spellcheck="false"
           placeholder="https://localhost:5000" enterkeyhint="done" />
       </div>
-      <div class="auth-hint">
-        Run the IBKR Client Portal Gateway on your machine, then enter
-        its URL above. Default: https://localhost:5000
-      </div>
-    </details>
+
+      <button type="button" id="auth-check-btn" class="auth-btn auth-btn-secondary">
+        Check Connection
+      </button>
+
+      <details class="auth-setup-help">
+        <summary>How to start the gateway</summary>
+        <ol class="auth-setup-steps">
+          <li>Install Java&nbsp;8+ or OpenJDK&nbsp;11</li>
+          <li>Open a terminal in <code>system/IBKR.CSA/clientportal.gw/</code></li>
+          <li>Run <code>bin/run.sh root/conf.yaml</code></li>
+          <li>Wait for <em>"Server listening on port 5000"</em></li>
+          <li>Visit <code>https://localhost:5000</code> in your browser and <strong>accept the SSL certificate</strong></li>
+        </ol>
+      </details>
+    </div>
 
     <div id="auth-status" class="auth-status"></div>
   </div>
@@ -627,23 +642,59 @@ function setAuthStatus(msg, isError = false) {
   el.className = 'auth-status' + (isError ? ' error' : '');
 }
 
+function setGatewayDot(state) {
+  const dot = $('auth-gateway-dot');
+  const label = $('auth-gateway-label');
+  dot.className = 'auth-gateway-dot' + (state === 'ok' ? ' ok' : state === 'fail' ? ' fail' : '');
+  label.textContent = state === 'ok' ? 'Gateway connected'
+    : state === 'fail' ? 'Gateway not reachable'
+    : 'Gateway';
+}
+
+async function applyGatewayUrl() {
+  const gwUrlInput = $('auth-gateway-url');
+  if (gwUrlInput && gwUrlInput.value.trim()) {
+    await auth.gateway.setGatewayUrl(gwUrlInput.value.trim());
+  }
+}
+
+/* ── Check Connection button ────────────────────────────────────────────── */
+$('auth-check-btn').addEventListener('click', async () => {
+  await applyGatewayUrl();
+  $('auth-check-btn').disabled = true;
+  setAuthStatus('Checking gateway…');
+  setGatewayDot('');
+
+  const ok = await auth.gateway._pingGateway();
+  setGatewayDot(ok ? 'ok' : 'fail');
+  $('auth-check-btn').disabled = false;
+
+  if (ok) {
+    setAuthStatus('Gateway is reachable. Enter your credentials and sign in.');
+  } else {
+    setAuthStatus(
+      'Cannot reach ' + (auth.gateway._gatewayBaseUrl || 'the gateway') +
+      '. Start the gateway and accept its SSL certificate first.',
+      true
+    );
+  }
+});
+
 $('auth-login-btn').addEventListener('click', async () => {
   const user = $('auth-username').value.trim();
   const pass = $('auth-password').value;
   if (!user || !pass) { setAuthStatus('Enter your IBKR username and password.', true); return; }
 
   /* Apply custom gateway URL if the user set one */
-  const gwUrlInput = $('auth-gateway-url');
-  if (gwUrlInput && gwUrlInput.value.trim()) {
-    await auth.gateway.setGatewayUrl(gwUrlInput.value.trim());
-  }
+  await applyGatewayUrl();
 
   $('auth-login-btn').disabled = true;
-  setAuthStatus('Opening Client Portal Gateway login…');
+  setAuthStatus('Connecting to gateway…');
   try {
     await auth.manualLogin(user, pass);
   } catch (e) {
     setAuthStatus(e.message, true);
+    setGatewayDot('fail');
     $('auth-login-btn').disabled = false;
   }
 });

@@ -79,11 +79,11 @@ export class AuthController {
     }
 
     // Step 2: Authenticate via Client Portal Gateway
-    this._onStatusChange('Opening Client Portal Gateway login…');
+    this._onStatusChange('Connecting to Client Portal Gateway…');
     const ok = await this._gateway.loginWithCredentials(username, password);
     if (!ok) {
       throw new Error(
-        'Login was not completed. Please sign in on the gateway login page (including 2FA) and try again.'
+        'Login was not completed. Ensure the gateway is running, accept the SSL certificate, then try again.'
       );
     }
   }
