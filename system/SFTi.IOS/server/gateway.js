@@ -245,7 +245,7 @@ export class GatewayManager {
     try {
       this._gateway = getGateway({
         onLog: (msg) => this._onLog(msg),
-        onError: () => {},
+        onError: (err) => this._onLog('[Gateway] CheerpJ error: ' + (err.message || err)),
         onReady: async () => {
           const up = await this._pingGateway();
           if (up && this._status === 'awaiting_gateway') {
