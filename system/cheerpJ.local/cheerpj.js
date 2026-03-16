@@ -66,7 +66,7 @@ const RUNTIME_JARS = [
   'commons-cli-1.2.jar',
   'commons-lang-2.6.jar',
   'ibgroup.security.auth.client.lib-20210528111740.jar',
-].map(jar => `${GW_ROOT}/build/lib/runtime/${jar}`);
+];
 
 // ─── Vault cache key helpers ────────────────────────────────────────────────
 function vaultKey(repoPath) {
@@ -121,7 +121,8 @@ export class CheerpJLocal {
     this._state = 'prefetching';
     this.onLog('[CheerpJ] Caching gateway assets…');
 
-    const allPaths = [GATEWAY_JAR, BROWSER_JAR, ...RUNTIME_JARS];
+    const rtJarPaths = RUNTIME_JARS.map(j => `${GW_ROOT}/build/lib/runtime/${j}`);
+    const allPaths = [GATEWAY_JAR, BROWSER_JAR, ...rtJarPaths];
     let cached = 0, fetched = 0;
     const failed = [];
 
@@ -183,7 +184,7 @@ export class CheerpJLocal {
       const rootDir  = appBase + GW_ROOT + '/root';
       const mainJar  = appBase + GATEWAY_JAR;
       const browserJar = appBase + BROWSER_JAR;
-      const rtJars   = RUNTIME_JARS.map(j => appBase + j);
+      const rtJars   = RUNTIME_JARS.map(j => appBase + GW_ROOT + '/build/lib/runtime/' + j);
       const classpath = [rootDir, browserJar, mainJar, ...rtJars].join(':');
 
       this.onLog('[CheerpJ] Loading gateway library (browser-native mode)…');
