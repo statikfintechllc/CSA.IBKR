@@ -665,15 +665,16 @@ $('auth-check-btn').addEventListener('click', async () => {
   setAuthStatus('Checking gateway…');
   setGatewayDot('');
 
-  const ok = await auth.gateway._pingGateway();
+  const ok = await auth.gateway.checkConnection();
   setGatewayDot(ok ? 'ok' : 'fail');
   $('auth-check-btn').disabled = false;
 
   if (ok) {
     setAuthStatus('Gateway is reachable. Enter your credentials and sign in.');
   } else {
+    const gwStatus = await auth.gateway.getStatus();
     setAuthStatus(
-      'Cannot reach ' + (auth.gateway._gatewayBaseUrl || 'the gateway') +
+      'Cannot reach ' + (gwStatus.gatewayUrl || 'the gateway') +
       '. Start the gateway and accept its SSL certificate first.',
       true
     );

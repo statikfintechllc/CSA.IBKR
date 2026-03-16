@@ -283,6 +283,16 @@ export class GatewayManager {
     };
   }
 
+  /**
+   * Public reachability check — returns true if the gateway responds.
+   * Use this from UI code instead of calling _pingGateway() directly.
+   *
+   * @returns {Promise<boolean>}
+   */
+  async checkConnection() {
+    return this._pingGateway();
+  }
+
   // ─── Private ────────────────────────────────────────────────────────────────
 
   /**
@@ -293,8 +303,12 @@ export class GatewayManager {
    * unless the user has previously visited the gateway URL and accepted
    * the certificate warning.
    *
-   * We accept any HTTP status as "reachable" — even 401/403 means the
-   * server is up.  Only network errors (connection refused, cert blocked)
+   * Uses mode: 'no-cors' so the request succeeds even when the gateway
+   * doesn't return proper CORS headers.  The resulting opaque response
+   * (status 0, type 'opaque') still confirms the server responded.
+   *
+   * We accept any response as "reachable" — even errors mean the server
+   * is up.  Only network failures (connection refused, cert blocked)
    * count as unreachable.
    *
    * @returns {Promise<boolean>}
@@ -303,15 +317,13 @@ export class GatewayManager {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
     try {
-      const resp = await fetch(this._gatewayBaseUrl, {
+      await fetch(this._gatewayBaseUrl, {
         method: 'GET',
-        mode: 'no-cors',        // avoid CORS preflight for the ping
+        mode: 'no-cors',
         credentials: 'include',
         signal: controller.signal,
       });
       clearTimeout(timer);
-      // mode: 'no-cors' yields an opaque response (status 0, type 'opaque')
-      // which still means the server responded — it's reachable.
       return true;
     } catch (_) {
       clearTimeout(timer);

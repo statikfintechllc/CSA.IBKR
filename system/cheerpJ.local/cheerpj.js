@@ -97,6 +97,7 @@ export class CheerpJLocal {
     this.onLog('[CheerpJ.local] Prefetching gateway assets into vault…');
 
     const allPaths = [this.jarPath, ...this.classpath];
+    const totalAssets = allPaths.length + 1; // +1 for conf.yaml
     let cached = 0;
     let fetched = 0;
     const failed = [];
@@ -112,7 +113,7 @@ export class CheerpJLocal {
         continue;
       }
 
-      this.onLog(`[Vault] Downloading ${name} (${i + 1}/${allPaths.length})…`);
+      this.onLog(`[Vault] Downloading ${name} (${i + 1}/${totalAssets})…`);
       const bytes = await Vault.fetchAndCache(path, key);
       if (bytes) {
         fetched++;
