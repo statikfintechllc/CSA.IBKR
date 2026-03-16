@@ -66,7 +66,9 @@ Now that the gateway is running, you are ready to authenticate, to do that open 
 [https://localhost:5000/](https://localhost:5000/)
 
 In this page you should see our regular login page which is also visible here:
-[https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=22](https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=22)
+[https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=368](https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=368)
+
+**Note:** The browser-native mode uses `forwardTo=368` which is the Client Portal API/Gateway authentication endpoint. This prevents IBKR from redirecting to IBKR Web after login, allowing the SSO popup to remain on the authentication confirmation page where session cookies are captured.
 
 Once you login, the gateway will confirm the client is authenticated and is ok to close the browser window. Or will display any reasons why the authentication may have failed.
 

@@ -194,10 +194,15 @@ public final class BrowserGateway {
     /**
      * Return the SSO login URL that should be opened in a popup window.
      *
+     * forwardTo=368 is the Client Portal API/Gateway authentication endpoint
+     * which does not redirect to IBKR Web or other trading platforms after login.
+     * This allows the popup to remain on the IBKR authentication confirmation page
+     * which can be safely closed once the session cookies are captured.
+     *
      * @return full URL string
      */
     public static String ssoLoginUrl() {
-        return ssoHost + "/sso/Login?forwardTo=22&RL=1&ip2loc=US";
+        return ssoHost + "/sso/Login?forwardTo=368&RL=1&ip2loc=US";
     }
 
     /**

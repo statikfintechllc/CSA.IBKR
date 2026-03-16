@@ -244,7 +244,7 @@ export class CheerpJLocal {
 
   /** Get the SSO login URL for the popup window. */
   async ssoLoginUrl() {
-    if (!this._bridge) return 'https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=22&RL=1&ip2loc=US';
+    if (!this._bridge) return 'https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=368&RL=1&ip2loc=US';
     return await this._bridge.ssoLoginUrl();
   }
 
