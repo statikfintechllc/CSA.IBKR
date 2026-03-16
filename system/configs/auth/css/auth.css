@@ -115,3 +115,25 @@
   color: rgba(0, 212, 255, 0.7);
 }
 .auth-status.error { color: rgba(239, 83, 80, 0.85); }
+
+/* ── Advanced gateway settings ──────────────────────────────────────────── */
+.auth-advanced {
+  margin-top: 14px;
+}
+.auth-advanced summary {
+  font: 11px -apple-system;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  text-align: center;
+  padding: 6px 0;
+}
+.auth-advanced summary:hover {
+  color: rgba(255, 255, 255, 0.5);
+}
+.auth-hint {
+  font: 10px -apple-system;
+  color: rgba(255, 255, 255, 0.25);
+  line-height: 1.5;
+  margin-top: 6px;
+}

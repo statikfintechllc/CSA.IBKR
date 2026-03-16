@@ -1,16 +1,21 @@
 /**
  * sw.js — CSA.IBKR Service Worker
- * Manages session tokens, proxies IBKR gateway HTTP calls,
+ * Manages session state, proxies IBKR gateway HTTP calls,
  * caches static assets, and enables offline splash.
  *
  * Universally portable: all paths are derived at runtime from
  * self.registration.scope so the app works from any subdirectory
  * (e.g. GitHub Pages /CSA.IBKR/ or a custom domain /).
+ *
+ * API proxy:
+ *   Requests to /v1/api/* from the main thread are intercepted and
+ *   forwarded to the configured gateway URL (default: https://localhost:5000).
+ *   Auth-related endpoints (/iserver/auth/*, /sso/*, /tickle, /logout)
+ *   are always allowed through — they don't require a pre-existing session.
  */
 
-const SW_VERSION = '1.1.0';
+const SW_VERSION = '1.2.0';
 const CACHE_NAME = `csa-ibkr-v${SW_VERSION}`;
-const IBKR_API_BASE = 'https://api.ibkr.com/v1/api';
 
 // Compute the app root from the SW's own scope — works for any deploy path.
 // e.g. https://user.github.io/CSA.IBKR/ or http://localhost:5500/
@@ -44,10 +49,19 @@ const STATIC_ASSETS = [
   `${BASE}system/configs/assets/icons/icon.svg`,
 ];
 
-// ─── Session store (in-memory; survives tab close via vault.js IDB) ───────────
-let sessionToken = null;
+// ─── Session store ────────────────────────────────────────────────────────────
 let sessionExpiry = null;
 let gatewayReady = false;
+let gatewayBaseUrl = 'https://localhost:5000';
+
+// Auth-related paths that are always allowed through without a session.
+// These are needed to ESTABLISH a session in the first place.
+const AUTH_PASS_THROUGH = [
+  '/iserver/auth/',
+  '/sso/',
+  '/tickle',
+  '/logout',
+];
 
 // ─── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -85,21 +99,24 @@ self.addEventListener('message', (event) => {
   const { type, payload } = event.data || {};
   switch (type) {
     case 'SET_SESSION':
-      sessionToken = payload.token;
-      sessionExpiry = payload.expiry;
+      sessionExpiry = payload?.expiry || (Date.now() + 24 * 60 * 60 * 1000);
       gatewayReady = true;
       broadcast({ type: 'SESSION_READY' });
       break;
     case 'CLEAR_SESSION':
-      sessionToken = null;
       sessionExpiry = null;
       gatewayReady = false;
       broadcast({ type: 'SESSION_CLEARED' });
       break;
+    case 'SET_GATEWAY_URL':
+      if (payload?.url) {
+        gatewayBaseUrl = payload.url.replace(/\/+$/, '');
+      }
+      break;
     case 'GET_STATUS':
       event.source.postMessage({
         type: 'STATUS',
-        payload: { gatewayReady, sessionExpiry },
+        payload: { gatewayReady, sessionExpiry, gatewayBaseUrl },
       });
       break;
   }
@@ -110,8 +127,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. Gateway API calls — same-origin /v1/api/* or calls to localhost (Wasm JVM)
-  if (url.pathname.startsWith('/v1/api/') || url.hostname === 'localhost') {
+  // 1. Gateway API calls — same-origin /v1/api/*
+  //    These are proxied to the actual gateway (localhost:5000 or custom URL).
+  if (url.pathname.startsWith('/v1/api/')) {
     event.respondWith(handleGatewayRequest(request));
     return;
   }
@@ -136,40 +154,62 @@ self.addEventListener('fetch', (event) => {
 
 // ─── Gateway proxy ─────────────────────────────────────────────────────────────
 async function handleGatewayRequest(request) {
-  if (!gatewayReady || !sessionToken) {
-    return new Response(JSON.stringify({ error: 'Gateway not ready', code: 401 }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const url = new URL(request.url);
+  const apiPath = url.pathname + url.search;
+
+  // Auth-related endpoints are ALWAYS forwarded — they're needed
+  // to establish a session and must not be blocked.
+  const isAuthPath = AUTH_PASS_THROUGH.some((p) => apiPath.includes(p));
+
+  // For non-auth requests, require an active session
+  if (!isAuthPath && !gatewayReady) {
+    return new Response(
+      JSON.stringify({
+        error: 'Not authenticated. Please sign in via IBKR SSO first.',
+        code: 401,
+      }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 
-  if (sessionExpiry && Date.now() > sessionExpiry) {
-    sessionToken = null;
+  // Check session expiry
+  if (!isAuthPath && sessionExpiry && Date.now() > sessionExpiry) {
     gatewayReady = false;
+    sessionExpiry = null;
     broadcast({ type: 'SESSION_EXPIRED' });
-    return new Response(JSON.stringify({ error: 'Session expired', code: 401 }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ error: 'Session expired. Please sign in again.', code: 401 }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 
-  const headers = new Headers(request.headers);
-  headers.set('Authorization', `Bearer ${sessionToken}`);
-  headers.set('X-CSA-Client', 'SFTi-PWA');
+  // Proxy to the gateway base URL
+  const proxyUrl = `${gatewayBaseUrl}${apiPath}`;
 
   try {
-    const proxied = new Request(request.url, {
+    const headers = new Headers(request.headers);
+    headers.set('X-CSA-Client', 'SFTi-PWA');
+
+    const proxied = new Request(proxyUrl, {
       method: request.method,
       headers,
-      body: request.method !== 'GET' && request.method !== 'HEAD' ? await request.blob() : undefined,
+      body: request.method !== 'GET' && request.method !== 'HEAD'
+        ? await request.blob()
+        : undefined,
       credentials: 'include',
     });
     return await fetch(proxied);
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message, code: 503 }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Gateway unreachable — return a clear error
+    return new Response(
+      JSON.stringify({
+        error: `Gateway unreachable at ${gatewayBaseUrl}. ` +
+          'Ensure the IBKR Client Portal Gateway is running. ' +
+          'See: system/IBKR.CSA/clientportal.gw/doc/GettingStarted.md',
+        code: 503,
+      }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
 
@@ -179,7 +219,6 @@ async function handleOAuthCallback(request) {
   const token = url.searchParams.get('oauth_token') || url.searchParams.get('access_token');
 
   if (token) {
-    sessionToken = token;
     sessionExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 h
     gatewayReady = true;
     broadcast({ type: 'SESSION_READY', payload: { token, expiry: sessionExpiry } });

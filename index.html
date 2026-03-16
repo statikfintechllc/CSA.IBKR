@@ -390,7 +390,7 @@
         placeholder="••••••••" enterkeyhint="go" />
     </div>
 
-    <button id="auth-login-btn" class="auth-btn">Connect to IBKR</button>
+    <button id="auth-login-btn" class="auth-btn">Sign in with IBKR</button>
 
     <!-- Shown only when a WebAuthn credential is already stored -->
     <button id="auth-faceid-btn" class="auth-faceid-btn" style="display:none;">
@@ -403,6 +403,21 @@
       </svg>
       Sign in with Face ID
     </button>
+
+    <!-- Gateway URL config (for users running the Java gateway on their network) -->
+    <details class="auth-advanced" id="auth-advanced">
+      <summary>Gateway Settings</summary>
+      <div class="auth-field" style="margin-top:0.5rem;">
+        <label for="auth-gateway-url">Gateway URL</label>
+        <input type="url" id="auth-gateway-url"
+          autocomplete="url" autocapitalize="none" spellcheck="false"
+          placeholder="https://localhost:5000" enterkeyhint="done" />
+      </div>
+      <div class="auth-hint">
+        Run the IBKR Client Portal Gateway on your machine, then enter
+        its URL above. Default: https://localhost:5000
+      </div>
+    </details>
 
     <div id="auth-status" class="auth-status"></div>
   </div>
@@ -616,8 +631,15 @@ $('auth-login-btn').addEventListener('click', async () => {
   const user = $('auth-username').value.trim();
   const pass = $('auth-password').value;
   if (!user || !pass) { setAuthStatus('Enter your IBKR username and password.', true); return; }
+
+  /* Apply custom gateway URL if the user set one */
+  const gwUrlInput = $('auth-gateway-url');
+  if (gwUrlInput && gwUrlInput.value.trim()) {
+    await auth.gateway.setGatewayUrl(gwUrlInput.value.trim());
+  }
+
   $('auth-login-btn').disabled = true;
-  setAuthStatus('Connecting…');
+  setAuthStatus('Opening IBKR login page…');
   try {
     await auth.manualLogin(user, pass);
   } catch (e) {
