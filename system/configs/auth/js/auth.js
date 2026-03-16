@@ -5,11 +5,11 @@
  *
  * Auth flow:
  *   1. Face ID auto-login: retrieve stored creds → validate existing session
- *   2. Manual login: save creds via Face ID → open IBKR SSO → poll for session
+ *   2. Manual login: save creds via Face ID → open gateway login page
+ *      (gateway redirects to IBKR SSO internally → captures session token)
  *
- * IBKR requires browser-based SSO with 2FA — credentials cannot be
- * submitted programmatically via REST.  The Face ID vault stores creds
- * for future use when the in-browser CheerpJ gateway is fully operational.
+ * Credentials are stored encrypted via Face ID for future auto-login
+ * once the in-browser CheerpJ gateway is fully operational.
  */
 
 import FaceID from '../../../SFTi.IOS/face/faceid.js';
@@ -62,7 +62,8 @@ export class AuthController {
 
   /**
    * Manual login: register Face ID for the first time, then authenticate
-   * via IBKR SSO (browser-based login with 2FA).
+   * via the Client Portal Gateway's login page (which redirects to IBKR SSO
+   * internally and captures the session token).
    *
    * @param {string} username  IBKR username
    * @param {string} password  IBKR password
@@ -77,12 +78,12 @@ export class AuthController {
       this._onError('Face ID registration skipped:', err.message);
     }
 
-    // Step 2: Authenticate via IBKR SSO
-    this._onStatusChange('Opening IBKR login page…');
+    // Step 2: Authenticate via Client Portal Gateway
+    this._onStatusChange('Opening Client Portal Gateway login…');
     const ok = await this._gateway.loginWithCredentials(username, password);
     if (!ok) {
       throw new Error(
-        'IBKR login was not completed. Please sign in on the IBKR page (including 2FA) and try again.'
+        'Login was not completed. Please sign in on the gateway login page (including 2FA) and try again.'
       );
     }
   }

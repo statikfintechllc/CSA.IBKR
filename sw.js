@@ -168,7 +168,7 @@ async function handleGatewayRequest(request) {
   if (!isAuthPath && !gatewayReady) {
     return new Response(
       JSON.stringify({
-        error: 'Not authenticated. Please sign in via IBKR SSO first.',
+        error: 'Not authenticated. Please sign in via the Client Portal Gateway first.',
         code: 401,
       }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }

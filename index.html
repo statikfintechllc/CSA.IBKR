@@ -390,7 +390,7 @@
         placeholder="••••••••" enterkeyhint="go" />
     </div>
 
-    <button id="auth-login-btn" class="auth-btn">Sign in with IBKR</button>
+    <button id="auth-login-btn" class="auth-btn">Sign in via Gateway</button>
 
     <!-- Shown only when a WebAuthn credential is already stored -->
     <button id="auth-faceid-btn" class="auth-faceid-btn" style="display:none;">
@@ -639,7 +639,7 @@ $('auth-login-btn').addEventListener('click', async () => {
   }
 
   $('auth-login-btn').disabled = true;
-  setAuthStatus('Opening IBKR login page…');
+  setAuthStatus('Opening Client Portal Gateway login…');
   try {
     await auth.manualLogin(user, pass);
   } catch (e) {

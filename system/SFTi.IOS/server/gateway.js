@@ -4,24 +4,29 @@
  * Manages the full lifecycle of the IBKR Client Portal Gateway:
  *
  *   boot()                   → start the in-browser JVM + gateway JAR
- *   authenticate()           → open IBKR SSO in a popup, poll for session
- *   loginWithCredentials()   → store creds via Face ID, then authenticate via SSO
+ *   authenticate()           → open the gateway's own login page (which
+ *                              redirects to IBKR SSO), then poll for session
+ *   loginWithCredentials()   → store creds via Face ID, then authenticate
  *   tickle()                 → keep the session alive (POST /tickle every 55s)
  *   logout()                 → clear session + stop gateway
  *   getStatus()              → current gateway + auth state
  *
- * Authentication flow (IBKR requirement):
- *   IBKR does NOT expose a REST endpoint for credential submission.
- *   All authentication goes through browser-based SSO with 2FA.
- *   See: https://www.interactivebrokers.com/campus/ibkr-api-page/cpapi-v1/#authentication
+ * Authentication flow (per GettingStarted.md):
+ *   1. Open the Client Portal Gateway's own URL in a popup
+ *      (e.g. https://localhost:5000)
+ *   2. The gateway redirects to IBKR SSO for login + 2FA
+ *   3. After login, IBKR SSO redirects BACK to the gateway
+ *   4. The gateway captures the session token
+ *   5. Poll /iserver/auth/status to confirm the session
+ *   6. /iserver/auth/ssodh/init opens the brokerage session
  *
- *   1. Open IBKR SSO login page in a popup/new window
- *   2. User authenticates on IBKR's page (username + password + 2FA)
- *   3. After login, poll /iserver/auth/status to detect the session
- *   4. Once authenticated, /iserver/auth/ssodh/init opens the brokerage session
+ * Opening the gateway URL (not the IBKR SSO URL directly) is critical:
+ * the gateway must be the redirect target so it can capture the session
+ * cookie.  Navigating to IBKR SSO directly would log you into the web
+ * portal without establishing a session on the local gateway.
  *
  * The Service Worker proxies all /v1/api/* requests to the configured
- * gateway base URL (local gateway or api.ibkr.com).
+ * gateway base URL.
  */
 
 import { getGateway } from '../../cheerpJ.local/cheerpj.js';
@@ -32,10 +37,6 @@ const GATEWAY_URL_KEY = 'gw_base_url';
 const TICKLE_INTERVAL_MS = 55_000;
 const SSO_POLL_INTERVAL_MS = 2000;
 const SSO_TIMEOUT_MS = 300_000; // 5 minutes
-
-// IBKR SSO login page — forwardTo=22 = Client Portal Gateway
-// See: GettingStarted.md in the gateway bundle
-const IBKR_SSO_URL = 'https://gdcdyn.interactivebrokers.com/sso/Login?forwardTo=22&RL=1';
 
 // Default gateway base URL — the standard CP Gateway port
 const DEFAULT_GATEWAY_URL = 'https://localhost:5000';
@@ -101,24 +102,31 @@ export class GatewayManager {
   }
 
   /**
-   * Open the IBKR SSO login page and wait for authentication.
+   * Open the Client Portal Gateway's login page and wait for authentication.
    *
-   * This is the correct IBKR auth flow — browser-based SSO with 2FA.
-   * IBKR explicitly does not support programmatic credential submission:
-   * "There is currently no mechanism available on Interactive Brokers' end
-   *  to permit individual clients to automate the brokerage session
-   *  authentication process when using Client Portal API."
+   * Per GettingStarted.md the correct flow is:
+   *   1. Navigate to the gateway URL (e.g. https://localhost:5000)
+   *   2. The gateway redirects to IBKR SSO for login + 2FA
+   *   3. After SSO, IBKR redirects BACK to the gateway with a session token
+   *   4. The gateway confirms authentication
+   *
+   * Opening the gateway URL — not the IBKR SSO URL directly — is critical:
+   * the gateway must be the SSO redirect target so it can capture the
+   * session cookie.  Going to IBKR SSO directly logs you into the web
+   * portal without establishing a session on the local gateway.
    *
    * @returns {Promise<boolean>}  true if authenticated, false if cancelled/timeout
    */
   async authenticate() {
     if (this._status === 'idle') await this.boot();
 
-    this._onLog('[Gateway] Opening IBKR login page…');
-    this._onLog('[Gateway] Complete sign-in (including 2FA) on the IBKR page.');
+    this._onLog('[Gateway] Opening Client Portal Gateway login…');
+    this._onLog('[Gateway] Complete sign-in (including 2FA) on the login page.');
 
-    // Open IBKR SSO in a popup (or new tab on iOS standalone PWA)
-    const ssoWindow = window.open(IBKR_SSO_URL, 'ibkr-sso');
+    // Open the GATEWAY's own URL — it will redirect to IBKR SSO and
+    // capture the session token when SSO redirects back.
+    const loginUrl = this._gatewayBaseUrl;
+    const ssoWindow = window.open(loginUrl, 'ibkr-sso');
 
     return new Promise((resolve) => {
       let resolved = false;
@@ -164,9 +172,9 @@ export class GatewayManager {
   /**
    * Login flow called from the UI when the user enters credentials.
    *
-   * Credentials are saved via Face ID (for quick re-login) but are NOT
-   * posted to any REST endpoint.  Authentication always goes through
-   * IBKR's browser-based SSO page.
+   * Credentials are saved via Face ID (for quick re-login).  Authentication
+   * is done by opening the Client Portal Gateway's login page, which
+   * redirects to IBKR SSO internally and captures the session token.
    *
    * @param {string} username  IBKR username (stored for Face ID)
    * @param {string} password  IBKR password (stored encrypted via Face ID)
