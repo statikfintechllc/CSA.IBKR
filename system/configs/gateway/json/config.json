@@ -1,0 +1,85 @@
+{
+  "comment": "CSA.IBKR Gateway Config — Production (replaces conf.yaml)",
+  "apiHost": "https://api.ibkr.com",
+  "apiVersion": "v1",
+  "region": "US",
+  "ssl": {
+    "comment": "SSL is handled natively by the browser/GitHub Pages HTTPS — no JKS keystore needed",
+    "enabled": true,
+    "managedBy": "browser-native"
+  },
+  "auth": {
+    "ssoLoginUrl": "https://gdcdyn.interactivebrokers.com/sso/Login",
+    "ssoForwardTo": 22,
+    "authDelay": 3000,
+    "sessionKeepalive": 300000,
+    "tickleInterval": 300000,
+    "maxSessionAge": 86400000
+  },
+  "server": {
+    "comment": "Replaces Vert.x serverOptions — these map to Service Worker behavior",
+    "eventLoopPoolSize": "browser-managed",
+    "workerPoolSize": "browser-managed",
+    "maxWorkerExecuteTime": 100,
+    "blockedThreadCheckInterval": "not-applicable"
+  },
+  "cors": {
+    "comment": "CORS is handled in-browser by Service Worker fetch interception",
+    "originAllowed": "*",
+    "allowCredentials": true
+  },
+  "portalBase": "",
+  "endpoints": {
+    "ws": "/v1/api/ws",
+    "tickle": "/v1/api/tickle",
+    "authStatus": "/v1/api/iserver/auth/status",
+    "logout": "/v1/api/logout",
+    "accounts": "/v1/api/iserver/accounts"
+  },
+  "environments": {
+    "production": {
+      "apiHost": "https://api.ibkr.com",
+      "portalBase": "",
+      "svcEnvironment": "v1"
+    },
+    "alpha": {
+      "apiHost": "https://ndcdyn.interactivebrokers.com",
+      "portalBase": "/portal.proxy",
+      "svcEnvironment": "alpha"
+    },
+    "api-alpha": {
+      "apiHost": "https://api.ibkr.com",
+      "portalBase": "",
+      "svcEnvironment": "alpha"
+    },
+    "beta": {
+      "apiHost": "https://ndcdyn.interactivebrokers.com",
+      "portalBase": "",
+      "svcEnvironment": "beta"
+    },
+    "tws": {
+      "apiHost": "https://ndcdyn.interactivebrokers.com",
+      "portalBase": "/portal.proxy",
+      "svcEnvironment": "v1"
+    }
+  },
+  "logging": {
+    "comment": "Replaces logback.xml — maps to engine/logger.js levels",
+    "level": "DEBUG",
+    "persist": false,
+    "maxPersistedLogs": 5000,
+    "modules": {
+      "CookieManager": "INFO",
+      "WebSocketMgr": "DEBUG",
+      "SessionManager": "INFO",
+      "GatewayClient": "DEBUG",
+      "AuthFlow": "INFO"
+    }
+  },
+  "ip": {
+    "comment": "IP filtering is not applicable in-browser — the browser IS the client",
+    "originalAllow": ["192.*", "131.216.*", "127.0.0.1"],
+    "originalDeny": ["212.90.324.10"],
+    "note": "In-browser architecture eliminates the need for IP filtering"
+  }
+}

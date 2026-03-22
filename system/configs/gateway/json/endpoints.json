@@ -1,0 +1,137 @@
+{
+  "comment": "IBKR Client Portal API — Complete Endpoint Catalog",
+  "version": "v1",
+  "basePattern": "/v1/api",
+
+  "session": {
+    "tickle":            { "method": "POST", "path": "/tickle",                    "auth": true,  "note": "Keepalive — send every 5 min to prevent session timeout" },
+    "authStatus":        { "method": "POST", "path": "/iserver/auth/status",       "auth": true,  "note": "Check if session is authenticated" },
+    "reauthenticate":    { "method": "POST", "path": "/iserver/reauthenticate",    "auth": true,  "note": "Trigger re-authentication" },
+    "logout":            { "method": "POST", "path": "/logout",                    "auth": true,  "note": "Destroy session" },
+    "ssoInit":           { "method": "GET",  "path": "/ssodh/init",               "auth": false, "note": "Initialize SSO flow" },
+    "validate":          { "method": "GET",  "path": "/sso/validate",             "auth": false, "note": "Validate SSO token" }
+  },
+
+  "account": {
+    "list":              { "method": "GET",  "path": "/iserver/accounts",          "auth": true,  "note": "List brokerage accounts" },
+    "switch":            { "method": "POST", "path": "/iserver/account",           "auth": true,  "note": "Switch active account", "body": "{acctId}" },
+    "pnl":               { "method": "GET",  "path": "/iserver/account/pnl/partitioned", "auth": true, "note": "Partitioned P&L" },
+    "dynAccount":        { "method": "GET",  "path": "/iserver/dynaccount",        "auth": true,  "note": "Dynamic account query" }
+  },
+
+  "portfolio": {
+    "accounts":          { "method": "GET",  "path": "/portfolio/accounts",        "auth": true,  "note": "List portfolio accounts (call before other portfolio endpoints)" },
+    "subaccounts":       { "method": "GET",  "path": "/portfolio/subaccounts",     "auth": true,  "note": "List sub-accounts" },
+    "summary":           { "method": "GET",  "path": "/portfolio/{accountId}/summary",  "auth": true, "note": "Account summary" },
+    "ledger":            { "method": "GET",  "path": "/portfolio/{accountId}/ledger",   "auth": true, "note": "Account ledger" },
+    "meta":              { "method": "GET",  "path": "/portfolio/{accountId}/meta",     "auth": true, "note": "Account metadata" },
+    "positions":         { "method": "GET",  "path": "/portfolio/{accountId}/positions/{page}", "auth": true, "note": "Get positions (30 per page)" },
+    "positionByConid":   { "method": "GET",  "path": "/portfolio/{accountId}/position/{conid}", "auth": true, "note": "Get specific position" }
+  },
+
+  "marketData": {
+    "snapshot":          { "method": "GET",  "path": "/iserver/marketdata/snapshot", "auth": true, "note": "Top-of-book snapshot. Params: conids, fields" },
+    "history":           { "method": "GET",  "path": "/iserver/marketdata/history",  "auth": true, "note": "Historical bars. Params: conid, period, bar" },
+    "hmdsHistory":       { "method": "GET",  "path": "/hmds/history",               "auth": true, "note": "Alternate historical data endpoint" },
+    "cancel":            { "method": "GET",  "path": "/iserver/marketdata/unsubscribeall", "auth": true, "note": "Cancel all market data" }
+  },
+
+  "securitySearch": {
+    "search":            { "method": "POST", "path": "/iserver/secdef/search",       "auth": true, "note": "Search by symbol. Body: {symbol, secType?}" },
+    "contractInfo":      { "method": "GET",  "path": "/iserver/contract/{conid}/info", "auth": true, "note": "Contract details" },
+    "secDefInfo":        { "method": "GET",  "path": "/iserver/secdef/info",         "auth": true, "note": "Security definition" },
+    "futures":           { "method": "GET",  "path": "/trsrv/futures",               "auth": true, "note": "Futures for underlying. Params: symbols" },
+    "secDef":            { "method": "GET",  "path": "/trsrv/secdef",                "auth": true, "note": "Security definition via trsrv" },
+    "stocks":            { "method": "GET",  "path": "/trsrv/stocks",                "auth": true, "note": "Stock lookup" }
+  },
+
+  "orders": {
+    "place":             { "method": "POST", "path": "/iserver/account/{accountId}/orders", "auth": true, "note": "Place order(s)" },
+    "reply":             { "method": "POST", "path": "/iserver/reply/{replyId}",     "auth": true, "note": "Reply to order confirmation" },
+    "preview":           { "method": "POST", "path": "/iserver/account/{accountId}/orders/whatif", "auth": true, "note": "Preview order impact" },
+    "list":              { "method": "GET",  "path": "/iserver/account/orders",      "auth": true, "note": "Today's orders. Params: force" },
+    "cancel":            { "method": "DELETE", "path": "/iserver/account/{accountId}/order/{orderId}", "auth": true, "note": "Cancel order" },
+    "modify":            { "method": "PUT",  "path": "/iserver/account/{accountId}/order/{orderId}", "auth": true, "note": "Modify order" }
+  },
+
+  "alerts": {
+    "list":              { "method": "GET",  "path": "/iserver/account/{accountId}/alerts", "auth": true },
+    "create":            { "method": "POST", "path": "/iserver/account/alert",       "auth": true },
+    "details":           { "method": "GET",  "path": "/iserver/account/alert/{alertId}", "auth": true },
+    "delete":            { "method": "DELETE", "path": "/iserver/account/{accountId}/alert/{alertId}", "auth": true },
+    "activate":          { "method": "POST", "path": "/iserver/account/alert/activate", "auth": true }
+  },
+
+  "scanner": {
+    "params":            { "method": "GET",  "path": "/iserver/scanner/params",      "auth": true, "note": "Available scan types" },
+    "run":               { "method": "POST", "path": "/iserver/scanner/run",         "auth": true, "note": "Execute scanner" }
+  },
+
+  "websocket": {
+    "url": "/v1/api/ws",
+    "protocol": "wss",
+    "topics": {
+      "marketData":      { "subscribe": "smd+{conid}+{\"fields\":[...]}", "unsubscribe": "umd+{conid}+{}" },
+      "orders":          { "subscribe": "sor+{}", "unsubscribe": "uor+{}" },
+      "pnl":             { "subscribe": "spl+{}", "unsubscribe": "upl+{}" },
+      "heartbeat":       { "send": "ech+hb", "interval": 55000 }
+    },
+    "unsolicited": ["system", "sts", "ntf", "blt"],
+    "marketDataFields": {
+      "31": "lastPrice",
+      "55": "symbol",
+      "58": "text",
+      "70": "high",
+      "71": "low",
+      "73": "marketValue",
+      "74": "avgPrice",
+      "75": "unrealizedPnl",
+      "76": "formattedPosition",
+      "77": "formattedValue",
+      "78": "model",
+      "82": "change",
+      "83": "changePercent",
+      "84": "bidPrice",
+      "85": "askSize",
+      "86": "askPrice",
+      "87": "volume",
+      "88": "bidSize",
+      "6004": "exchange",
+      "6008": "conid",
+      "6070": "secType",
+      "6072": "months",
+      "6073": "regularExpiry",
+      "6119": "serverId",
+      "6457": "underlyingConid",
+      "6509": "marketDataAvailability",
+      "7051": "companyName",
+      "7057": "lastSize",
+      "7058": "conidAndExchange",
+      "7059": "listingExchange",
+      "7068": "industryGroup",
+      "7094": "todayOpenPrice",
+      "7184": "dividends",
+      "7219": "ema200",
+      "7220": "ema100",
+      "7221": "ema50",
+      "7222": "ema20",
+      "7282": "prevDayClose",
+      "7283": "todayClosePrice",
+      "7284": "52weekHigh",
+      "7285": "52weekLow",
+      "7286": "todayVolume",
+      "7287": "openInterest",
+      "7288": "optVolume",
+      "7289": "optOpenInterest",
+      "7291": "impliedVolatility",
+      "7293": "mark",
+      "7294": "shortableShares",
+      "7295": "feeRate",
+      "7296": "optionPermissions",
+      "7308": "26weekHigh",
+      "7309": "26weekLow",
+      "7310": "13weekHigh",
+      "7311": "13weekLow"
+    }
+  }
+}
