@@ -110,97 +110,11 @@ Flow:
 - Session-based (not token/OAuth for individual accounts)
 - OAuth 1.0a/2.0 exists but is **institutional only**
 
-**In-Browser Architecture** (via CheerpJ/cheerpJ.local):
-```
-PWA boots → CheerpJ/custom Wasm JVM starts → loads gateway JAR
-→ Gateway binds to virtual "localhost" inside Wasm
-→ Service Worker intercepts fetch("https://localhost:5000/...")
-→ Routes to in-Wasm gateway HTTP handler
-→ Gateway makes outbound HTTPS to IBKR servers
-→ CheerpJ bridges outbound calls via browser fetch()
-→ Auth: redirect to IBKR login page → OAuth callback → back to PWA
-→ Session token → stored in vault → Face ID protects future sessions
-```
-
-### 3.3 Auth Flow Diagram
-```mermaid
-sequenceDiagram
-    participant User
-    participant PWA as PWA (index.html)
-    participant FaceID as Face ID<br/>(Secure Enclave)
-    participant SW as Service Worker
-    participant GW as Gateway JAR<br/>(in Wasm JVM)
-    participant IBKR as IBKR Servers
-
-    User->>PWA: Open from Home Screen
-    PWA->>FaceID: navigator.credentials.get()
-    FaceID-->>PWA: Signed assertion
-    
-    alt First Login
-        PWA->>GW: Boot CheerpJ + load JAR
-        GW->>IBKR: Auth redirect (HTTPS)
-        IBKR-->>User: Login page
-        User->>IBKR: Credentials
-        IBKR-->>PWA: OAuth callback + session
-        PWA->>FaceID: navigator.credentials.create()
-        FaceID-->>PWA: Store passkey
-    else Returning User
-        PWA->>SW: fetch("/api/...")
-        SW->>GW: Route to in-Wasm gateway
-        GW->>IBKR: REST API call (cached session)
-        IBKR-->>GW: Response data
-        GW-->>SW: JSON response
-        SW-->>PWA: Serve to UI
-    end
-```
-
----
-
-## 4. CheerpJ vs. Custom Wasm JVM (`cheerpJ.local`)
-
-### 4.1 CheerpJ Current State (2025-2026)
-
-| Version | Java Support | Key Features |
-|---------|-------------|--------------|
-| **CheerpJ 4.0** (Apr 2025) | Java 11 stable | JNI via Wasm, mobile touch/virtual keyboard, improved networking |
-| **CheerpJ 4.1** (May 2025) | Java 17 preview | Performance optimizations, better mobile Swing/AWT |
-| **CheerpJ 5.0** (Late 2025) | Java 17 stable | Target for production use |
-
-- Runs **unmodified JAR files** — no recompilation needed
-- Full OpenJDK runtime in Wasm including networking (HTTP/HTTPS bridged via browser `fetch`)
-- **Library Mode**: JavaScript ↔ Java interop for calling Java methods from JS
-- File system virtualization, clipboard, audio
-
-### 4.2 Building `cheerpJ.local` — Feasibility Analysis
-
-The instructions specify building a **custom CheerpJ imitation** to avoid third-party dependency.
-
-> [!CAUTION]
-> Building a fully compatible custom WebAssembly JVM from scratch is an **enormous undertaking** (CheerpJ represents years of engineering). A pragmatic approach is recommended.
-
-**Realistic Options**:
-
-| Approach | Effort | Compatibility | Recommendation |
-|----------|--------|---------------|----------------|
-| **A. Wrap CheerpJ as a vendored module** | Low | Full | ✅ Best for MVP — vendor CheerpJ runtime files into `cheerpJ.local/`, abstract behind a clean API |
-| **B. Use TeaVM to transpile gateway** | Medium | Partial | ⚠️ Requires gateway source code (we don't have it) |
-| **C. Use existing Wasm JVM (e.g., adapt Chicory)** | High | Partial | ⚠️ Chicory runs Wasm *in* JVM, not the reverse |
-| **D. Build from scratch** | Extreme (years) | Unknown | ❌ Not viable for this project |
-
-**Recommended Architecture for `cheerpJ.local/`**:
-```
-cheerpJ.local/
-├── README.md
-├── engine/
-│   ├── loader.js       ← JAR loading + init, abstracts CheerpJ API
-│   ├── runtime.js      ← Wasm JVM runtime wrapper
-│   ├── network.js      ← Browser fetch bridge for gateway HTTP calls
-│   └── filesystem.js   ← Virtual FS for gateway config files (conf.yaml etc.)
-├── bridge/
-│   ├── gateway-api.js  ← JS API for calling gateway REST endpoints
-│   └── session.js      ← Session management + keep-alive
-└── vendor/             ← CheerpJ runtime files (self-contained, no CDN)
-```
+**In-Browser Architecture** (Much Research Needed HERE)
+- Proper conversion of Java Gateway to javascript to commit to repository
+- Needs to be compiled by jekyll when github pages is built and use the users local resources to run the gateway in the browser, and then use the service worker to proxy requests to the gateway for auth and data retrieval
+- NO CheerpJ - We need to rebuild the Java Gateway in JavaScript/WebAssembly directly to avoid JVM overhead and complexity — this is a critical engineering task
+- The Gateway's REST API will be proxied via the Service Worker to handle CORS and allow the PWA to interact with it seamlessly
 
 ---
 
@@ -323,7 +237,7 @@ SFTi.IOS/
 
 ## 7. Liquid Glass Design System
 
-### 7.1 CSS Implementation
+### 7.1 Basic CSS Implementation
 
 Core CSS properties for Liquid Glass:
 ```css
@@ -356,7 +270,7 @@ Core CSS properties for Liquid Glass:
 }
 ```
 
-### 7.2 Configs Structure
+### 7.2 Configs Structure Idea Slightly Expanded from Original
 ```
 system/configs/
 ├── README.md
@@ -407,11 +321,10 @@ CSA.IBKR/
     │   │   ├── dist/             ← Gateway JAR
     │   │   ├── build/lib/runtime/← Runtime JARs
     │   │   └── root/             ← Gateway config (conf.yaml)
-    │   └── clientportal.gw.zip
-    ├── cheerpJ.local/            ← Custom Wasm JVM wrapper
     │   ├── engine/               ← Loader, runtime, networking, filesystem
     │   ├── bridge/               ← Gateway API, session management
-    │   └── vendor/               ← Vendored CheerpJ runtime (self-contained)
+    │   ├── vendor/               ← Vendor libraries (Not etty, Jackson, etc. we need to do them for javascript vendor libraries)
+    │   └── clientportal.gw.zip  ← Packaged Gateway for download (if needed)
     ├── SFTi.CRPs/                ← Chart Rendering Plugins
     │   ├── core/                 ← GPU renderer, data pipeline, viewport
     │   ├── charts/               ← Candlestick, line, area, volume, depth

@@ -56,24 +56,23 @@ sfti.linux/
 One HTML file boots a Java gateway in WebAssembly on your iPhone. Plugins drop in as JS files. Zero server. Pure SFTi architecture.
 ```
 
-My future idea after that context:
-index.html:
-nothing major yet,
-basic functionality to pull chart data and create clean line charts using SOTA js(better charts than STT and TradingView, including built in)
-so this needs engineering and the proper components in chart/
-User Opens PWA it uses FaceID to auto put in their IBKR password and run auth through the java sever that needs launched using CheerpJ, with callbacks to universal https urls(for other clones of this repo), all data and such stored client side in a vault(since IoS allows storage calls with webkit now, the app can receive real persistent storage, look this up)
-So then i add the index.html to homescreen from github pages url, and then sign in for first time to link ibkr password to the pwa and have face id connection so its hands free after, then allow me to input a ticker to pull data from the server to then display real chart data and a fundamentals section and a news section.
+My NEW idea after that context:
+We need to start with basic functionality to pull chart data and create clean line charts using SOTA js(better charts than STT and TradingView, including built in as pluggins in system, that the index.html in root will pull from to build the chart with the Javascript client portal)
+
+- So this needs engineering and the proper components in chart/
+User opens the PWA, which initiates a secure OAuth-based sign-in with IBKR via the JavaScript client portal served from the GitHub Pages CDN server. Authentication is done via standard redirect flows to IBKR over HTTPS, with callbacks to universal HTTPS URLs for GitHub Pages so it hits the callback URL for this system no matter who is running the pages (for other clones of this repo). The app never stores or auto-enters the user's IBKR password. Instead, short-lived access tokens (and, if supported, refresh tokens) returned by IBKR are stored client-side in an encrypted vault (e.g., using iOS persistent storage + Web Crypto / platform keychain), and can be unlocked using FaceID for a hands-free experience.
+- So then I add the index.html to the homescreen from the GitHub Pages URL, and on first sign-in the user completes the IBKR OAuth flow. The PWA binds the resulting session/token state to the device by encrypting it locally and associating the decryption key with FaceID (or equivalent secure enclave–backed mechanism), so subsequent launches are hands free without ever persisting or replaying the raw IBKR password. After auth, the user can input a ticker to pull data using the portal to then display real chart data and a fundamentals section and a news section.
 this is MvP idea
 much expanded ideas after.
 Here is my current directory tree(every file is empty aside from the stuff in the ibkr directory):
 ```txt
 CSA.IBK
 ├── README.md
-├── index.html
+├── index.html # All links, nothing coded here, dynamic and SOTA
 └── system
     ├── IBKR.CSA
-    │   ├── README.md
-    │   ├── clientportal.gw
+    │   ├── README.md # Ensure to fix this and the other docs as you find a working solution to making this javascript that is compiled by Jekyll and runs in a github cdn environment.
+    │   ├── clientportal.gw # From here; 
     │   │   ├── bin
     │   │   │   ├── run.bat
     │   │   │   └── run.sh
@@ -126,9 +125,8 @@ CSA.IBK
     │   │           └── demo
     │   │               ├── gateway.demo.js
     │   │               └── index.html
-    │   └── clientportal.gw.zip
-    ├── README.md
-    ├── SFTi.CIPs
+    │   └── clientportal.gw.zip # to here: Needs to be converted line by line to javascript, re-engineeging the needed components to work in a https cdn web hosting instead of a localhost https that the java client currently attempts to launch
+    ├── SFTi.CIPs # From here; 
     │   └── README.md
     ├── SFTi.CRPs
     │   └── README.md
@@ -150,17 +148,14 @@ CSA.IBK
     │   │   └── README.md
     │   └── trades
     │       └── README.md
-    └── cheerpJ.local
-        └── README.md
+    └── README.md # To here: Is the system that needs built for the `index.html` and in-web/clientside data processing and rendering in the `index.html` 
 
 24 directories, 60 files
 ```
 I want:
-	∙	SFTi.IOS and its folders to be used by apple and the system for storing and the location of all apple system plugins for accessing face id and other things(storage and so on) like when the pwa is added to hoke screen i can add widgets to my control center or lock screen for the app or screen overlays like robinhood uses for adding a chart widget to the corner of my screen that stays live no matter what app im in, etc)
-	∙	SFTi.CRPs: Chart rendering pluggins, just a folder full of state of the art javascript and other files that create the sota charts that are best in class.
-	∙	SFTi.CIPs: Chart Indicator Pluggins, just a folder full of state of the art javascript and other files that create the sota on chart indicators that are best in class and 100% accurate.
-	∙	cheerjP.local: a custom built cheerjP imitation tool that runs as a unit, that does not require importing the CheerjP third party tool, so then the system is self contained.
-
+	∙	SFTi.IOS and its folders to be used by apple and the system for storing and the location of all apple system plugins for accessing face id and other things(storage and so on) like when the pwa is added to home screen i can add widgets to my control center or lock screen for the app or screen overlays like robinhood uses for adding a chart widget to the corner of my screen that stays live no matter what app im in, etc, Need Research done.)
+	∙	SFTi.CRPs: Chart rendering plugins, just a folder full of state of the art javascript and other files that create the sota charts that are best in class. These need to rival the RobinHood Legend CHarts. But Faster and Smarter.
+	∙	SFTi.CIPs: Chart Indicator Plugins, just a folder full of state of the art javascript and other files that create the sota on chart indicators that are best in class and 100% accurate. This needs to be a Rival to TradingView.
 index.html needs to link to all these properly and we need a proper configs/ folder with a config dir for each component and function, breaking them into css/js/config/json/etc file for each component
 example:
 ```txt
@@ -172,10 +167,10 @@ example:
     │   │   │   ├── alignment.js
     │   │   │   └── dynamics.js
     │   │   ├── css
-    │   │   │   └── imnotsurenamesforeveryting.css
+    │   │   │   └── imnotsurenamesforeverything.css
     │   │   ├── json
     │   │   │   └── config.json
-    │   │   ├── css
+
     │   ├── next.component.folder/
 etc
 ```
@@ -183,6 +178,6 @@ etc
 so the index will need to link to all of the components in system(all made global, so everything in CIPs CRPs for charting cheerjP.local for server management, configs to align and monitor everything visually so its all smooth and sota)
 all need to be documented too so any added widgets get built the same way.
 
-Use real liquid glass code in the pwa and full system Architecture, This is a moat breaking Architecture and system.
+Use real liquid glass code in the pwa and full system Architecture, This is a moat breaking Architecture and system. Do not add a Title Bar, it is to be a full screen display with glass floating buttons and widgets that you can add to your screen and move around and customize, with the ibkr gateway running in the background and feeding it data, and the plugins in the CRPs and CIPs folders rendering the best charts and indicators on the market, all running natively in the browser on your iPhone with no server or cloud component at all. This is a true SFTi architecture. Do not build yet, just confirm you understand the design goal, philosophy, and architecture I want.
 
-Do you see and understand the design goal and philosophy and architecture i want? DO NOT BUILD YET.
+Do you see and understand the design goal and philosophy and architecture i want? DO NOT BUILD YET, JUST CONFIRM YOU UNDERSTAND THE DESIGN GOAL, PHILOSOPHY, AND ARCHITECTURE I WANT.
