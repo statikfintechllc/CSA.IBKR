@@ -17,7 +17,7 @@
         internalBlockingPoolSize: 20
     cors:
         origin.allowed: "*"
-        allowCredentials: true
+        allowCredentials: false
     webApps:
         - name: "demo"
           index: "index.html"
@@ -26,8 +26,5 @@
         - 192.*
         - 131.216.*
         - 127.0.0.1
-        - 0:0:0:0:0:0:0:1
-        - 10.*
-        - 172.16.*
       deny:
         - 212.90.324.10

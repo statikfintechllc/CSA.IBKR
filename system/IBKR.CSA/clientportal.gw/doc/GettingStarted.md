@@ -1,35 +1,5 @@
 # Getting Started
 
-## Browser-Native Mode (CheerpJ — No Local Install Required)
-
-The CSA.IBKR PWA can run the IBKR Client Portal Gateway **entirely in the browser** using CheerpJ 3.0 (a Java-to-WebAssembly JVM by Leaning Technologies).
-
-**How it works:**
-
-1. CheerpJ 3.0 boots a WebAssembly JVM inside the browser
-2. The gateway JARs are loaded via `cheerpjRunLibrary()` (library mode — no TCP server socket needed)
-3. A purpose-built Java class (`BrowserGateway.java`) uses `java.net.HttpURLConnection` which CheerpJ transparently maps to the browser's `fetch()` API
-4. All IBKR API calls go through this Java bridge → directly to `api.ibkr.com`
-5. No localhost server, no manual install, no Java on the machine
-
-**To authenticate:**
-
-1. Open the PWA in a modern browser (Chrome, Edge, Firefox)
-2. Wait for "Gateway ready" (CheerpJ loads the JVM — takes a few seconds on first load)
-3. Click "Sign In" → IBKR SSO opens in a popup
-4. Log in with your IBKR credentials + 2FA
-5. The popup closes and you're authenticated
-
-**Source files:**
-- `src/ibgroup/web/core/clientportal/gw/browser/BrowserGateway.java` — the browser-native proxy class
-- `build/lib/runtime/browser-gateway.jar` — compiled JAR loaded by CheerpJ
-- `../../cheerpJ.local/cheerpj.js` — CheerpJ integration (library mode)
-- `../../SFTi.IOS/server/gateway.js` — gateway lifecycle manager
-
----
-
-## Traditional Mode (Local Java Gateway)
-
 The Client Portal gateway is available for download at: [http://download2.interactivebrokers.com/portal/clientportal.gw.zip](http://download2.interactivebrokers.com/portal/clientportal.gw.zip)
 
 You can download and extract to any location your user has access to. We will install it under 
@@ -51,8 +21,6 @@ Once you extract the .zip file, you will see the following directories:
 - **doc** contains this GettingStarted.md guide
 
 - **root** contains files required for the runtime configuration of the gateway and is also the location where webapps reside. We will explain those in more detail later.
-
-- **src** contains the BrowserGateway.java source for the browser-native bridge
 
 To start the gateway you need to open a command prompt or bash on the directory the files were extracted. In our case we will open windows -> run -> cmd and go to c:\gateway\.
 
