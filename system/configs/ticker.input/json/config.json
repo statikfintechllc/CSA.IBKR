@@ -1,7 +1,0 @@
-{
-  "placeholder": "Symbol…",
-  "maxLength": 10,
-  "autoFocus": false,
-  "recentTickers": 10,
-  "liveSearch": true
-}

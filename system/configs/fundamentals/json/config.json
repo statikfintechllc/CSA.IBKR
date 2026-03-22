@@ -1,6 +1,0 @@
-{
-  "refreshIntervalSeconds": 15,
-  "showBidAsk": true,
-  "showConid": false,
-  "fields": ["last", "bid", "ask", "change", "changePct", "exchange", "currency"]
-}
