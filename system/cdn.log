@@ -135,3 +135,37 @@ ConnectionResetError: [Errno 104] Connection reset by peer
 192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/engine/error-handler.js HTTP/1.1" 200 -
 192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
 192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:11] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:11] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:11] code 404, message File not found
+192.168.1.170 - - [30/Mar/2026 00:07:11] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [30/Mar/2026 00:07:11] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:11] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:12] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:12] code 404, message File not found
+192.168.1.170 - - [30/Mar/2026 00:07:12] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [30/Mar/2026 00:07:12] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:12] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:12] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:13] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:13] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:13] code 404, message File not found
+192.168.1.170 - - [30/Mar/2026 00:07:13] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [30/Mar/2026 00:07:13] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:07:13] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/engine/config-loader.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/engine/logger.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/engine/event-bus.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/bridge/session-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/bridge/websocket-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/bridge/cookie-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/bridge/auth-flow.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/SFTi.IOS/storage/vault.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/SFTi.IOS/face/webauthn.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] code 404, message File not found
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/IBKR.CSA/engine/error-handler.js HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [30/Mar/2026 00:08:28] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
