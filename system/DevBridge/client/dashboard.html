@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SFTi DevBridge</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #04050d;
+            --surface: rgba(10, 14, 30, 0.72);
+            --border: rgba(0, 245, 200, 0.12);
+            --primary: #00f5c8;
+            --primary-glow: rgba(0, 245, 200, 0.4);
+            --secondary: #ff9500;
+            --danger: #ff3b5c;
+            --info: #5eb8ff;
+            --text: rgba(210, 230, 240, 0.9);
+            --text-dim: rgba(150, 175, 195, 0.5);
+            --font-display: 'Orbitron', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Ambient background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at 50% 120%, rgba(0, 245, 200, 0.1) 0%, transparent 70%);
+            z-index: -1;
+        }
+
+        /* Header */
+        header {
+            position: sticky;
+            top: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: calc(env(safe-area-inset-top) + 15px) 20px 15px;
+            background: rgba(4, 5, 13, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            z-index: 1001; /* Above tab-view and sidebar */
+        }
+
+        .brand {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brand-text {
+            font-family: var(--font-display);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.18em;
+            color: var(--primary);
+            text-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .brand-sub {
+            font-size: 8px;
+            letter-spacing: 0.22em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            position: relative;
+        }
+
+        /* Holographic Hamburger */
+        .hamburger-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            margin-left: 10px;
+            background: rgba(0, 245, 200, 0.05);
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+        }
+
+        .hamburger-btn:active { transform: scale(0.9); background: var(--primary-dim); }
+
+        .hamburger-btn svg {
+            width: 18px;
+            height: 18px;
+            filter: drop-shadow(0 0 8px var(--primary-glow));
+        }
+
+        .hamburger-btn path {
+            fill: none;
+            stroke: var(--primary);
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .hamburger-btn.open .line-top { d: path('M 3,3 L 15,15'); }
+        .hamburger-btn.open .line-mid { opacity: 0; }
+        .hamburger-btn.open .line-bot { d: path('M 3,15 L 15,3'); }
+
+        /* Sidebar Navigation */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            right: -280px;
+            width: 280px;
+            height: 100vh;
+            background: rgba(4, 5, 13, 0.98);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border-left: 1px solid var(--border);
+            z-index: 2000; /* Highest priority */
+            transition: right 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+            padding: calc(env(safe-area-inset-top) + 20px) 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        #sidebar.open { right: 0; box-shadow: -20px 0 50px rgba(0, 0, 0, 0.5); }
+
+        .nav-item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-family: var(--font-display);
+            font-size: 11px;
+            letter-spacing: 0.15em;
+            transition: all 0.2s;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: var(--primary-dim);
+            border-color: var(--border);
+            color: var(--primary);
+            box-shadow: 0 0 15px rgba(0, 245, 200, 0.1);
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+            z-index: 999;
+        }
+        .overlay.active { opacity: 1; pointer-events: auto; }
+
+        /* Tab Layouts */
+        .tab-header { margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .tab-section-header { font-size: 10px; color: var(--text-dim); margin: 25px 0 12px 5px; letter-spacing: 0.1em; }
+        .grid-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .card-list { display: flex; flex-direction: column; gap: 10px; }
+        .card-item { padding: 12px; border-left: 2px solid var(--border); }
+        .status-completed { border-left-color: var(--primary); }
+        .status-failed { border-left-color: var(--alert); }
+        .badge { font-size: 8px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.05); }
+        .badge-completed { color: var(--primary); }
+        .badge-failed { color: var(--alert); }
+
+        #tab-view {
+            display: none;
+            position: fixed;
+            top: 70px;
+            left: 0;
+            width: 100%;
+            height: calc(100vh - 70px);
+            background: var(--bg);
+            z-index: 900;
+            padding: 20px;
+            overflow-y: auto;
+            animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 8px var(--danger);
+        }
+
+        .status-dot.online {
+            background: var(--primary);
+            box-shadow: 0 0 8px var(--primary-glow);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .status-text {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            display: flex;
+            gap: 12px;
+            padding: 10px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid var(--border);
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .stat-item span { color: var(--primary); font-weight: 600; }
+
+        /* Log Feed */
+        #feed {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            scroll-behavior: smooth;
+        }
+
+        .log-card {
+            background: var(--surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            animation: slideUp 0.3s ease-out;
+            border-left: 3px solid var(--primary);
+        }
+
+        .log-card.level-warn { border-left-color: var(--secondary); }
+        .log-card.level-error { border-left-color: var(--danger); box-shadow: inset 0 0 10px rgba(255, 59, 92, 0.1); }
+        .log-card.level-info { border-left-color: var(--info); }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            margin-bottom: 6px;
+            color: var(--text-dim);
+        }
+
+        .card-source { text-transform: uppercase; letter-spacing: 0.1em; }
+        .card-body { font-size: 12px; line-height: 1.4; word-break: break-all; }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Footer / Action */
+        footer {
+            padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
+            background: rgba(4, 5, 13, 0.85);
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap:10px;
+        }
+
+        button {
+            flex: 1;
+            background: rgba(0, 245, 200, 0.08);
+            border: 1px solid var(--border);
+            color: var(--primary);
+            padding: 10px;
+            border-radius: 6px;
+            font-family: inherit;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:active { background: var(--primary-dim); transform: scale(0.98); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <div class="brand-text">DEVBRIDGE</div>
+            <div class="brand-sub">SFTi Live System</div>
+        </div>
+        <div class="status-pill">
+            <div id="statusDot" class="status-dot"></div>
+            <div id="statusText" class="status-text">Connecting</div>
+            <div id="navToggle" class="hamburger-btn">
+                <svg viewBox="0 0 18 18">
+                    <path class="line-top" d="M 2,5 L 16,5" />
+                    <path class="line-mid" d="M 2,9 L 16,9" />
+                    <path class="line-bot" d="M 2,13 L 16,13" />
+                </svg>
+            </div>
+        </div>
+    </header>
+
+    <div id="overlay" class="overlay"></div>
+    <nav id="sidebar">
+        <div class="brand-text" style="font-size: 14px; margin-bottom: 20px;">NAVIGATION</div>
+        <a href="#" class="nav-item active" onclick="loadTab('dashboard')">DASHBOARD</a>
+        <a href="#" class="nav-item" onclick="loadTab('telemetry')">TELEMETRY</a>
+        <a href="#" class="nav-item" onclick="loadTab('cards')">CARD QUEUE</a>
+        <a href="#" class="nav-item" onclick="loadTab('storage')">STORAGE</a>
+        <a href="#" class="nav-item" onclick="loadTab('network')">NETWORK</a>
+        <div style="flex: 1;"></div>
+        <div class="brand-sub" style="font-size: 7px; opacity: 0.5;">SFTi DevBridge v1.2</div>
+    </nav>
+
+    <div id="tab-view"></div>
+
+    <main id="main-content">
+        <div class="stats-bar">
+            <div class="stat-item">Events: <span id="eventCount">0</span>/200</div>
+            <div class="stat-item">Cards: <span id="cardCount">0</span></div>
+            <div class="stat-item">IP: <span id="lanIp">...</span></div>
+        </div>
+        <div id="feed"></div>
+    </main>
+
+    <footer>
+        <button id="clearBtn">Clear Log</button>
+        <button id="pingBtn">Ping Server</button>
+    </footer>
+
+    <script src="bridge.js"></script>
+    <script>
+        const feed = document.getElementById('feed');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const eventCount = document.getElementById('eventCount');
+        const cardCount = document.getElementById('cardCount');
+        const lanIp = document.getElementById('lanIp');
+
+        let logs = [];
+        const MAX_LOGS = 50;
+
+        window.addEventListener('bridge_log', (e) => {
+            addCard(e.detail);
+        });
+
+        function addCard(data) {
+            logs.unshift(data);
+            if (logs.length > MAX_LOGS) logs.pop();
+            
+            const card = document.createElement('div');
+            card.className = `log-card level-${data.level}`;
+            const ts = new Date(data.ts * 1000).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            card.innerHTML = `
+                <div class="card-header">
+                    <span class="card-source">${data.source} [${data.level}]</span>
+                    <span class="card-ts">${ts}</span>
+                </div>
+                <div class="card-body">${data.message}</div>
+            `;
+            
+            feed.insertBefore(card, feed.firstChild);
+            
+            // Limit DOM nodes
+            if (feed.children.length > MAX_LOGS) feed.removeChild(feed.lastChild);
+            
+            eventCount.innerText = logs.length;
+        }
+
+        // Monitoring loop for connection
+        setInterval(async () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            try {
+                const res = await fetch('/health', { signal: controller.signal });
+                clearTimeout(timeoutId);
+                const data = await res.json();
+                statusDot.className = 'status-dot online';
+                statusText.innerText = 'Online';
+                lanIp.innerText = data.ip;
+                cardCount.innerText = data.cards_pending;
+            } catch (err) {
+                clearTimeout(timeoutId);
+                console.warn("[Dashboard] Health check failed", err);
+                statusDot.className = 'status-dot';
+                statusText.innerText = 'Disconnected';
+            }
+        }, 5000);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            feed.innerHTML = '';
+            logs = [];
+            eventCount.innerText = '0';
+        });
+
+        document.getElementById('pingBtn').addEventListener('click', () => {
+            console.log('User Ping at ' + new Date().toISOString());
+        });
+
+        // Sidebar logic
+        const navToggle = document.getElementById('navToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+
+        function toggleNav() {
+            navToggle.classList.toggle('open');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+        }
+
+        navToggle.addEventListener('click', toggleNav);
+        overlay.addEventListener('click', toggleNav);
+
+        // Tab Loading Logic
+        const tabView = document.getElementById('tab-view');
+        const mainContent = document.getElementById('main-content');
+        let currentTab = 'dashboard';
+
+        async function loadTab(name) {
+            if (name === currentTab) {
+                if (sidebar.classList.contains('open')) toggleNav();
+                return;
+            }
+            
+            // Clean up previous tab if needed
+            if (window.activeTabCleanup) {
+                window.activeTabCleanup();
+                window.activeTabCleanup = null;
+            }
+
+            // Update UI state
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.toggle('active', el.innerText.toLowerCase() === name.toLowerCase() || (name === 'dashboard' && el.innerText === 'DASHBOARD'));
+            });
+
+            if (name === 'dashboard') {
+                tabView.style.display = 'none';
+                mainContent.style.display = 'block';
+            } else {
+                tabView.innerHTML = '<div style="display:flex; justify-content:center; align-items:center; height:100%; opacity:0.5;">Generating Fluid Interface...</div>';
+                tabView.style.display = 'block';
+                mainContent.style.display = 'none';
+                
+                try {
+                    const response = await fetch(`./tabs/${name}.html`);
+                    if (!response.ok) throw new Error('Tab not found');
+                    const html = await response.text();
+                    
+                    // Inject HTML and execute scripts manually
+                    tabView.innerHTML = html;
+                    const scripts = tabView.querySelectorAll('script');
+                    scripts.forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        newScript.text = oldScript.text;
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
+                } catch (err) {
+                    tabView.innerHTML = `<div style="color:var(--alert); text-align:center; padding:40px;">${err.message}</div>`;
+                }
+            }
+            
+            currentTab = name;
+            if (sidebar.classList.contains('open')) toggleNav();
+        }
+
+        window.loadTab = loadTab;
+
+        // SW Registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => {
+                console.log('[PWA] ServiceWorker Registered');
+            });
+        }
+    </script>
+</body>
+</html>

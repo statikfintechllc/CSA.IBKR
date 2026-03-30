@@ -1,0 +1,60 @@
+<div class="tab-header">
+    <div class="brand-text">NETWORK</div>
+    <div class="brand-sub">REAL-TIME TRAFFIC & LATENCY</div>
+</div>
+
+<div class="glass-card">
+    <div class="stat-label">BRIDGE LATENCY</div>
+    <div class="stat-value" id="net-latency">-- ms</div>
+    <div class="stat-sub" id="net-status">Pinging Server...</div>
+</div>
+
+<div class="tab-section-header">RESOURCE TIMING (WEBKIT)</div>
+<div id="net-log" class="card-list" style="max-height: 400px; overflow-y: auto;"></div>
+
+<script>
+    (() => {
+        const latencyEl = document.getElementById('net-latency');
+        const statusEl = document.getElementById('net-status');
+        const log = document.getElementById('net-log');
+
+        const ping = async () => {
+            const start = performance.now();
+            try {
+                const res = await fetch('/health?cache=' + Date.now());
+                const end = performance.now();
+                const diff = Math.round(end - start);
+                latencyEl.innerText = diff + ' ms';
+                statusEl.innerText = 'Connected to Bridge';
+                latencyEl.style.color = diff > 150 ? 'var(--alert)' : (diff > 80 ? 'var(--secondary)' : 'var(--primary)');
+            } catch (e) {
+                statusEl.innerText = 'Bridge Offline';
+                latencyEl.style.color = 'var(--alert)';
+            }
+        };
+
+        const updateLog = () => {
+            const entries = performance.getEntriesByType('resource').slice(-30).reverse();
+            log.innerHTML = entries.map(e => {
+                const dur = Math.round(e.duration);
+                const color = dur > 200 ? 'var(--alert)' : (dur > 100 ? 'var(--warning)' : 'var(--primary)');
+                const size = e.transferSize ? (e.transferSize / 1024).toFixed(1) + 'KB' : 'cached';
+                return `
+                    <div class="glass-card stat-item" style="display: flex; justify-content: space-between; align-items: center; border-left: 2px solid ${color};">
+                        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; max-width: 60%;">
+                            ${e.name.split('/').pop() || e.name}
+                        </div>
+                        <div style="font-size: 8px; opacity: 0.5;">${size}</div>
+                        <div style="font-size: 9px; color: ${color};">${dur}ms</div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        ping();
+        updateLog();
+        const t1 = setInterval(ping, 3000);
+        const t2 = setInterval(updateLog, 4000);
+        window.activeTabCleanup = () => { clearInterval(t1); clearInterval(t2); };
+    })();
+</script>

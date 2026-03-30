@@ -327,6 +327,7 @@
         <button class="dock-item glass" data-panel="scanner">Scanner</button>
         <button class="dock-item glass" data-panel="fundamentals">Fundamentals</button>
         <button class="dock-item glass" data-panel="news">News</button>
+        <button class="dock-item glass" data-panel="diagnostics" style="color: var(--color-accent);" onclick="openDevBridge()">Diagnostics</button>
       </div>
     </div>
     <div class="wake-lock-indicator" id="wake-indicator"></div>
@@ -502,8 +503,33 @@
       showLoginScreen();
     });
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const bridgeAutoUrl = `${window.location.protocol}//${window.location.hostname}:8765`;
+    const bridgeUrl = urlParams.get('devbridge') || bridgeAutoUrl;
+
+    window.openDevBridge = function() {
+      window.open(bridgeUrl, '_blank');
+    };
+
     // ---- Start Boot ----
     boot();
+  </script>
+  
+  <!-- TeaVM Compiled IBKR Gateway Core -->
+  <script src="assets/js/classes.js"></script>
+
+  <!-- DevBridge Injection (Diagnostics Tool) -->
+  <script>
+    (function() {
+      const qs = new URLSearchParams(window.location.search);
+      // Auto-detect: use the same hostname that served this page, port 8765
+      const autoUrl = `${window.location.protocol}//${window.location.hostname}:8765`;
+      const url = qs.get('devbridge') || autoUrl;
+      const script = document.createElement('script');
+      script.src = `${url}/bridge.js`;
+      script.onerror = function() { console.warn('[DevBridge] Failed to load bridge.js from', url); };
+      document.body.appendChild(script);
+    })();
   </script>
 </body>
 </html>

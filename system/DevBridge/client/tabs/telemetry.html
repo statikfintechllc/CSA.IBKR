@@ -1,0 +1,64 @@
+<div class="tab-header">
+    <div class="brand-text">TELEMETRY</div>
+    <div class="brand-sub">DEVICE & RUNTIME STATS</div>
+</div>
+
+<div class="grid-stats">
+    <div class="glass-card">
+        <div class="stat-label">HARDWARE</div>
+        <div class="stat-value" id="cpu-cores">-- Cores</div>
+        <div class="stat-value" id="device-mem">N/A (iOS)</div>
+    </div>
+    <div class="glass-card">
+        <div class="stat-label">PERSISTENCE</div>
+        <div class="stat-value" id="storage-status">Checking...</div>
+        <div class="stat-sub" id="pwa-status">PWA: Enabled</div>
+    </div>
+    <div class="glass-card">
+        <div class="stat-label">DISPLAY</div>
+        <div class="stat-value" id="screen-size">-- x --</div>
+        <div class="stat-sub" id="pixel-ratio">@--x DPR</div>
+    </div>
+    <div class="glass-card">
+        <div class="stat-label">ENGINE</div>
+        <div class="stat-value" id="webkit-v" style="font-size: 10px;">WebKit 2026</div>
+        <div class="stat-sub" id="gpu-info">GPU: Checking...</div>
+    </div>
+</div>
+
+<div class="glass-card" style="margin-top: 20px;">
+    <div class="stat-label">USER AGENT</div>
+    <div id="ua-string" style="font-size: 10px; opacity: 0.6; word-break: break-all; margin-top: 10px;"></div>
+</div>
+
+<script>
+    (async () => {
+        // CPU
+        document.getElementById('cpu-cores').innerText = (navigator.hardwareConcurrency || '??') + ' Cores';
+        
+        // Storage Status
+        if (navigator.storage && navigator.storage.estimate) {
+            const {usage} = await navigator.storage.estimate();
+            document.getElementById('storage-status').innerText = usage ? 'Active' : 'Empty';
+        }
+
+        // Display
+        document.getElementById('screen-size').innerText = `${window.screen.width} x ${window.screen.height}`;
+        document.getElementById('pixel-ratio').innerText = `@${window.devicePixelRatio}x DPR`;
+
+        // GPU
+        try {
+            if (navigator.gpu) {
+                const adapter = await navigator.gpu.requestAdapter();
+                document.getElementById('gpu-info').innerText = adapter ? 'WebGPU: Active' : 'WebGPU: Restricted';
+            } else {
+                document.getElementById('gpu-info').innerText = 'WebGPU: Unsupported';
+            }
+        } catch(e) {
+            document.getElementById('gpu-info').innerText = 'WebGPU: Error';
+        }
+
+        // UA
+        document.getElementById('ua-string').innerText = navigator.userAgent;
+    })();
+</script>

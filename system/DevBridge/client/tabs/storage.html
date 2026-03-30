@@ -1,0 +1,49 @@
+<div class="tab-header">
+    <div class="brand-text">STORAGE</div>
+    <div class="brand-sub">LOCAL & SESSION PERSISTENCE</div>
+</div>
+
+<div class="glass-card">
+    <div class="stat-label">USAGE ESTIMATE</div>
+    <div class="stat-value" id="storage-used">-- MB</div>
+    <div class="stat-sub" id="storage-quota">-- MB Quota</div>
+</div>
+
+<div class="tab-section-header">LOCAL STORAGE</div>
+<div id="ls-container" class="card-list"></div>
+
+<div class="tab-section-header">SESSION STORAGE</div>
+<div id="ss-container" class="card-list"></div>
+
+<script>
+    (async () => {
+        // Storage estimate
+        if (navigator.storage && navigator.storage.estimate) {
+            try {
+                const {usage, quota} = await navigator.storage.estimate();
+                document.getElementById('storage-used').innerText = (usage / (1024 * 1024)).toFixed(2) + ' MB';
+                document.getElementById('storage-quota').innerText = (quota / (1024 * 1024)).toFixed(0);
+            } catch(e) {
+                document.getElementById('storage-used').innerText = 'Restricted';
+            }
+        }
+
+        const renderStorage = (storage, containerId) => {
+            const cont = document.getElementById(containerId);
+            const keys = Object.keys(storage).slice(0, 10); // Limit to 10 for view
+            if (keys.length === 0) {
+                cont.innerHTML = '<div style="opacity: 0.3; font-size: 10px; margin-left: 5px;">No entries.</div>';
+            } else {
+                cont.innerHTML = keys.map(k => `
+                    <div class="glass-card stat-item">
+                        <div style="font-weight: 600; font-size: 10px; color: var(--primary); margin-bottom: 4px;">${k}</div>
+                        <div style="font-size: 9px; opacity: 0.6; word-break: break-all;">${String(storage.getItem(k)).substring(0, 100)}</div>
+                    </div>
+                `).join('');
+            }
+        };
+
+        renderStorage(localStorage, 'ls-container');
+        renderStorage(sessionStorage, 'ss-container');
+    })();
+</script>

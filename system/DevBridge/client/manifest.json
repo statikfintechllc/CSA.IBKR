@@ -1,0 +1,16 @@
+{
+  "name": "SFTi DevBridge",
+  "short_name": "DevBridge",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#04050d",
+  "theme_color": "#00f5c8",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2592/2592185.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

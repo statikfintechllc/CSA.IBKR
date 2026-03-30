@@ -1,0 +1,137 @@
+192.168.1.170 - - [29/Mar/2026 22:36:49] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:36:49] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:43:09] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:43:10] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:43:10] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:43:14] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:43:14] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:43:14] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:43:20] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:43:20] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:27] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:27] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:29] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:29] "GET /apple-touch-icon-precomposed.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:29] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:29] "GET /apple-touch-icon.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:29] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:29] "GET /favicon.ico HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:29] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:29] "GET /system/SFTi.IOS/metadata/icon-192.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:33] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:33] "GET /system/SFTi.IOS/metadata/icon-192.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:33] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:33] "GET /system/SFTi.IOS/metadata/icon-192.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:33] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:33] "GET /apple-touch-icon-120x120-precomposed.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:33] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:33] "GET /apple-touch-icon-120x120.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:33] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:33] "GET /apple-touch-icon.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:33] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:33] "GET /apple-touch-icon.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:37] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:37] "GET /assets/js/classes.js HTTP/1.1" 404 -
+----------------------------------------
+Exception occurred during processing of request from ('192.168.1.170', 58001)
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/http/server.py", line 1320, in finish_request
+    self.RequestHandlerClass(request, client_address, self,
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                             directory=args.directory)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/http/server.py", line 672, in __init__
+    super().__init__(*args, **kwargs)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/http/server.py", line 436, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.13/http/server.py", line 404, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.13/socket.py", line 719, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [Errno 104] Connection reset by peer
+----------------------------------------
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET / HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/engine/config-loader.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/engine/event-bus.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/engine/logger.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/bridge/session-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/bridge/cookie-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/bridge/websocket-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/bridge/auth-flow.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/SFTi.IOS/storage/vault.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/SFTi.IOS/face/webauthn.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/IBKR.CSA/engine/error-handler.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:44:45] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:55] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:51:55] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:51:56] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:56] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:51:56] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:51:57] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:57] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:57] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:51:57] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:51:57] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:57] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:58] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:58] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:58] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:51:58] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:51:58] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:58] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:59] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:51:59] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:51:59] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:04] "GET /index.html? HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:04] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:04] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:06] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:06] "GET /apple-touch-icon-precomposed.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:06] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:06] "GET /apple-touch-icon.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:06] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:06] "GET /favicon.ico HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:06] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:06] "GET /system/SFTi.IOS/metadata/icon-192.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:09] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:09] "GET /system/SFTi.IOS/metadata/icon-192.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:09] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:09] "GET /system/SFTi.IOS/metadata/icon-192.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:09] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:09] "GET /apple-touch-icon-120x120-precomposed.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:09] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:09] "GET /apple-touch-icon-120x120.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:09] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:09] "GET /apple-touch-icon.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:09] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:09] "GET /apple-touch-icon.png HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET / HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /manifest.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/engine/config-loader.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/engine/event-bus.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/engine/logger.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/bridge/session-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/bridge/websocket-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/bridge/cookie-manager.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/bridge/auth-flow.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/SFTi.IOS/storage/vault.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/SFTi.IOS/face/webauthn.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] code 404, message File not found
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /assets/js/classes.js HTTP/1.1" 404 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/IBKR.CSA/engine/error-handler.js HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/configs/gateway/json/config.json HTTP/1.1" 200 -
+192.168.1.170 - - [29/Mar/2026 22:52:12] "GET /system/configs/gateway/json/endpoints.json HTTP/1.1" 200 -

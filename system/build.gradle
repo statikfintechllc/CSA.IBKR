@@ -1,0 +1,31 @@
+plugins {
+    id 'java'
+    id "org.teavm" version "0.11.0"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation fileTree(dir: 'IBKR.CSA/clientportal.gw/build/lib/runtime', include: ['*.jar'])
+    implementation files('IBKR.CSA/clientportal.gw/dist/ibgroup.web.core.iblink.router.clientportal.gw.jar')
+}
+
+teavm {
+    js {
+        mainClass = "ibgroup.web.core.clientportal.gw.GatewayStart"
+        targetFileName = "classes.js"
+        outputDir = file("assets/js")
+
+        // Debug-friendly: no obfuscation, source maps on
+        obfuscated = false
+        sourceMap = true
+
+        // Balanced optimization (valid: NONE, BALANCED, AGGRESSIVE)
+        optimization = "BALANCED"
+
+        // Speed up compilation by reducing interprocedural analysis depth
+        fastGlobalAnalysis = true
+    }
+}

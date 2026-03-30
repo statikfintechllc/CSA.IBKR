@@ -1,0 +1,46 @@
+<div class="tab-header">
+    <div class="brand-text">CARDS</div>
+    <div class="brand-sub">EXECUTION QUEUE & HISTORY</div>
+</div>
+
+<div class="card-list" id="bridge-cards">
+    <div class="glass-card" style="text-align: center; opacity: 0.5;">
+        Polling Bridge Stats...
+    </div>
+</div>
+
+<script>
+    (() => {
+        const list = document.getElementById('bridge-cards');
+        const updateCards = () => {
+            const bridge = window.BRIDGE;
+            if (!bridge) {
+                list.innerHTML = '<div class="glass-card" style="text-align: center; opacity: 0.5;">Waiting for Bridge...</div>';
+                return;
+            }
+            const cards = bridge.getHistory() || [];
+            if (cards.length === 0) {
+                list.innerHTML = '<div class="glass-card" style="text-align: center; opacity: 0.5;">No cards processed yet.</div>';
+                return;
+            }
+            list.innerHTML = cards.map(c => {
+                const ts = new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                return `
+                <div class="glass-card card-item status-${c.status}">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <div class="stat-label">${c.type.toUpperCase()}</div>
+                            <div style="font-size: 8px; opacity: 0.4; margin-bottom: 8px;">ID: ${c.id.substring(0,8)} | ${ts}</div>
+                        </div>
+                        <div class="badge badge-${c.status}">${c.status.toUpperCase()}</div>
+                    </div>
+                    <pre style="font-size: 9px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; color: var(--text); overflow-x: auto;">${JSON.stringify(c.payload, null, 2)}</pre>
+                    ${c.result ? `<div style="font-size: 9px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 5px; color: var(--primary);">Result: ${typeof c.result === 'string' ? c.result.substring(0, 50) : 'Object'}</div>` : ''}
+                </div>
+            `;}).join('');
+        };
+        updateCards();
+        const timer = setInterval(updateCards, 2000);
+        window.activeTabCleanup = () => clearInterval(timer);
+    })();
+</script>

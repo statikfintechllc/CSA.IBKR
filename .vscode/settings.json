@@ -1,0 +1,10 @@
+{
+    "java.jdt.ls.java.home": "/bin/java-25-openjdk-25.0.2.0.10-2.portable.jdk.x86_64",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-25",
+            "path": "/bin/java-25-openjdk-25.0.2.0.10-2.portable.jdk.x86_64",
+            "default": true
+        }
+    ]
+}
