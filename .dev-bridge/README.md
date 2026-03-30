@@ -79,6 +79,19 @@ DevBridge/
 │       └── network.html            Real-time latency + resource timing
 ├── hu.ui/                          UI layer (neural mesh canvas, effects config, CSS)
 └── ico/                            SVG icon assets
+
+.dev-bridge
+├── debug.imgs
+│   ├── bugs
+│   │   ├── devbridge  # Bug Screenshots for the devbridge system
+│   │   └── system     # Bug Screenshots for the system
+│   └── current.state
+│       ├── devbridge  # Current State Screenshots for the devbridge system
+│       └── system     # Current State Screenshots for the system
+├── __init__.py
+├── instructions
+│   └── anithravity.build.md    # Original Build doc for the SFTi.dev-Bridge system. (For the agent or an inclined developer)
+└── README.md    # Integration and usage directions (For all to read and use)
 ```
 
 ## API
