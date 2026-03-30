@@ -4,6 +4,10 @@
 
 A self-contained diagnostic plugin that gives an AI agent real-time observability into a PWA running on an iPhone over LAN. Console intercept, network tracing, storage inspection, screenshot capture, and remote JS evaluation — all through a card-based task queue.
 
+> [!NOTE] 
+>
+> Same `README.md` as `SFTi.dev-Bridge/.github/README.md`, it is here for ease of access.
+
 ## Quick Start
 
 ```bash
